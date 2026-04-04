@@ -9,17 +9,8 @@ El proyecto consiste en el desarrollo de un sistema de gestión académica para 
 Carpeta `ca_program`
 > Entorno de desarrollo del software.
 
-Carpeta `entities`
-> Módulo que contiene las clases que se usarán en la representación de los datos a gestionar en el software.
-
-Carpeta `models`
-> Módulo que permite la persistencia de datos y el acceso a la base de datos.
-
-Carpeta `services`
-> Módulo que define la lógica del software.
-
-Carpeta `views`
-> Módulo que construye la interfaz de usuario gráfica para el software.
+Carpeta `database`
+> Módulo que permite la comunicación con la base de datos.
 
 Archivo `main.py`
 > Ejecuta el software.
@@ -27,8 +18,5 @@ Archivo `main.py`
 Carpeta `docs`
 > Agrupa la documentación en el desarrollo del software.
 
-Carpeta `diagrams`
-> Espacio para todos los diagramas diseñados en el desarrollo del software.
-
-Carpeta `sprints`
-> Espacio para todos los sprints realizados y documentados en el desarrollo del software.
+Archivo `setup.py`
+> Configura el entorno virtual e instala las dependencias.
