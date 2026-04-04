@@ -101,6 +101,9 @@ class UserModel:
         try:
             conn = get_connection()
             cursor = conn.cursor()
+            cursor.execute("DELETE FROM administrators WHERE id_user = %s", (id_user,))
+            cursor.execute("DELETE FROM professors WHERE id_user = %s", (id_user,))
+            cursor.execute("DELETE FROM students WHERE id_user = %s", (id_user,))
             cursor.execute("DELETE FROM users WHERE id_user = %s", (id_user,))
             conn.commit()
             return cursor.rowcount > 0

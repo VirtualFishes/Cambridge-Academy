@@ -508,7 +508,7 @@ class AdminGUI(QWidget):
     def _logout(self):
         self._auth.logout()
         self.close()
-        from ca_program.view.login_gui import LoginGUI
+        from ca_program.views.login_gui import LoginGUI
         self._login_window = LoginGUI(self._auth)
         self._login_window.show()
 
