@@ -10,7 +10,7 @@ Carpeta `ca_program`
 > Entorno de desarrollo del software.
 
 Carpeta `database`
-> Módulo que permite la comunicación con la base de datos.
+> Módulo que establece la conexión con la base de datos.
 
 Archivo `main.py`
 > Ejecuta el software.
