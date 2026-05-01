@@ -1,0 +1,7 @@
+pytest
+pytest-mock
+pytest-qt
+pytest-html
+pytest-cov
+psycopg2-binary
+PySide6
