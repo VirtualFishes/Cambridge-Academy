@@ -41,46 +41,43 @@ Antes de iniciar el programa, se debe ejecutar `setup.py` para la instalación a
 
 ## Detalles de desarrollo
 
-Version 0.2.0 - Funciones de modificación, eliminación y búsqueda para usuarios administrativos.
+Version 0.3.0 - Funciones del módulo estudiante, inscripción, pagos y seguridad de cuenta.
 
-Esta versión completa la gestión administrativa de estudiantes, cursos y profesores, extendiendo las funcionalidades de registro y consulta desarrolladas en la versión 0.1.0.
+Esta versión introduce las funcionalidades principales del usuario estudiante y amplía el sistema con procesos de inscripción, generación de recibos, pagos simulados, consulta financiera y cambio de contraseña.
 
 Funciones integradas:
 
-1. El usuario administrador puede modificar datos de estudiantes.
-2. El usuario administrador puede eliminar datos de estudiantes.
-3. El usuario administrador puede buscar estudiantes por nombre.
-4. El usuario administrador puede modificar datos de cursos.
-5. El usuario administrador puede eliminar datos de cursos.
-6. El usuario administrador puede buscar cursos por nombre.
-7. El usuario administrador puede modificar datos de profesores.
-8. El usuario administrador puede eliminar datos de profesores.
-9. El usuario administrador puede buscar profesores por nombre.
+1. El usuario estudiante puede visualizar los cursos disponibles.
+2. El usuario estudiante puede visualizar los cursos en los que está inscrito.
+3. El usuario estudiante puede consultar información detallada de los cursos.
+4. El usuario estudiante puede solicitar inscripción a un curso disponible.
+5. El sistema genera un recibo pendiente asociado a la inscripción.
+6. El usuario estudiante puede pagar un recibo pendiente para confirmar la inscripción.
+7. El usuario estudiante puede consultar su historial de pagos.
+8. El usuario administrador puede consultar los pagos realizados por estudiantes.
+9. El usuario autenticado puede cambiar su contraseña.
 
 Historias de usuario implementadas:
 
-- HU-03: Modificar datos de estudiantes.
-- HU-04: Eliminar datos de estudiantes.
-- HU-05: Buscar estudiantes por nombre.
-- HU-08: Modificar datos de cursos.
-- HU-09: Eliminar datos de cursos.
-- HU-10: Buscar cursos por nombre.
-- HU-13: Modificar datos de profesores.
-- HU-14: Eliminar datos de profesores.
-- HU-15: Buscar profesores por nombre.
+- HU-18: Visualizar cursos disponibles.
+- HU-19: Visualizar cursos inscritos.
+- HU-20: Consultar datos de los cursos.
+- HU-21: Inscribirme en un curso disponible.
+- HU-22: Consultar historial de pagos.
+- HU-16: Consultar pagos de estudiantes.
+- HU-30: Cambiar contraseña.
 
 # Versiones posteriores de desarrollo:
 
 - 0.1.0 : Registro y consulta de estudiantes, cursos y profesores.
-- 0.1.1 : Modificar estudiantes.
-- 0.1.2 : Eliminar estudiantes.
-- 0.1.3 : Buscar estudiantes.
-- 0.1.4 : Modificar cursos.
-- 0.1.5 : Eliminar cursos.
-- 0.1.6 : Buscar cursos
-- 0.1.7 : Modificar profesores.
-- 0.1.8 : Eliminar profesores.
-- 0.1.9 : Buscar profesores.
+- 0.2.0 : Modificación, eliminación y búsqueda de estudiantes, cursos y profesores.
+- 0.2.1 : Cursos disponibles
+- 0.2.2 : Cursos inscritos
+- 0.2.3 : Consultar cursos
+- 0.2.4 : Inscribir curso
+- 0.2.5 : Consultar pagos
+- 0.2.6 : Consultar pagos como administrador
+- 0.2.7 : Cambiar contraseña
 
 ---
 

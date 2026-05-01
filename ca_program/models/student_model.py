@@ -4,6 +4,7 @@ from ca_program.entities.user import User
 from database.connection import get_connection
 from ca_program.models.user_model import UserModel
 
+
 class StudentModel:
 
     @staticmethod

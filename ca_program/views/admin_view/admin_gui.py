@@ -1,9 +1,11 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -11,10 +13,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ca_program.views.admin_dashboard_widget import AdminDashboardWidget
-from ca_program.views.course_manager_gui import CourseManagerWidget
-from ca_program.views.professor_manager_gui import ProfessorManagerWidget
-from ca_program.views.student_manager_gui import StudentManagerWidget
+from ca_program.views.admin_view.admin_dashboard_widget import AdminDashboardWidget
+from ca_program.views.admin_view.course_manager_gui import CourseManagerWidget
+from ca_program.views.admin_view.professor_manager_gui import ProfessorManagerWidget
+from ca_program.views.admin_view.student_manager_gui import StudentManagerWidget
+from ca_program.views.admin_view.payments_gui import PaymentsGUI
+from ca_program.services.account_service import AccountService
+from ca_program.views.change_password_dialog import ChangePasswordDialog
 
 
 class AdminGUI(QMainWindow):
@@ -50,6 +55,7 @@ class AdminGUI(QMainWindow):
             "students": StudentManagerWidget(),
             "courses": CourseManagerWidget(),
             "professors": ProfessorManagerWidget(),
+            "payments": PaymentsGUI(),
         }
 
         for view in self.views.values():
@@ -91,6 +97,8 @@ class AdminGUI(QMainWindow):
         self._add_nav_button(layout, "students", "Estudiantes")
         self._add_nav_button(layout, "courses", "Cursos")
         self._add_nav_button(layout, "professors", "Profesores")
+        self._add_nav_button(layout, "payments", "Pagos")
+        self._add_action_button(layout, "Cambiar contraseña", self.open_change_password_dialog)
 
         layout.addStretch()
 
@@ -109,6 +117,12 @@ class AdminGUI(QMainWindow):
         self.nav_buttons[key] = button
         layout.addWidget(button)
 
+    def _add_action_button(self, layout: QVBoxLayout, text: str, callback):
+        button = QPushButton(text)
+        button.setObjectName("navButton")
+        button.clicked.connect(callback)
+        layout.addWidget(button)
+
     def change_view(self, view_name: str):
         view = self.views.get(view_name)
         if view is None:
@@ -123,8 +137,47 @@ class AdminGUI(QMainWindow):
             "students": "Gestión de estudiantes",
             "courses": "Gestión de cursos",
             "professors": "Gestión de profesores",
+            "payments": "Consulta de pagos",
         }
         self.statusBar().showMessage(labels.get(view_name, "Panel administrativo"))
+
+    def open_change_password_dialog(self):
+        """Abre el diálogo de cambio de contraseña para el administrador autenticado."""
+        id_user = getattr(self.user, "id_user", None)
+
+        if not id_user:
+            QMessageBox.warning(
+                self,
+                "Usuario no identificado",
+                "No fue posible identificar el usuario autenticado.",
+            )
+            return
+
+        dialog = ChangePasswordDialog(parent=self)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        password_data = dialog.get_password_data()
+        result = AccountService.change_password(
+            id_user=id_user,
+            current_password=password_data.get("current_password"),
+            new_password=password_data.get("new_password"),
+            confirm_password=password_data.get("confirm_password"),
+        )
+
+        if result.get("success"):
+            QMessageBox.information(
+                self,
+                "Contraseña actualizada",
+                result.get("message", "Contraseña actualizada correctamente."),
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "No fue posible cambiar la contraseña",
+                result.get("message", "Ocurrió un error al cambiar la contraseña."),
+            )
 
     def logout(self):
         from ca_program.views.login_gui import LoginGUI

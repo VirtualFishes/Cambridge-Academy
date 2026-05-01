@@ -59,18 +59,27 @@ class LoginGUI(QWidget):
 
         if user.role.name == "ADMIN":
             self.open_admin(user)
+        elif user.role.name == "STUDENT":
+            self.open_student(user)
         else:
             QMessageBox.information(
                 self,
                 "Acceso no disponible",
-                "Tu perfil no tiene acceso al panel administrativo.",
+                "Este perfil aún no tiene un panel implementado.",
             )
 
     def open_admin(self, user=None):
-        from ca_program.views.admin_gui import AdminGUI
+        from ca_program.views.admin_view.admin_gui import AdminGUI
 
         self.admin_window = AdminGUI(user=user)
         self.admin_window.show()
+        self.close()
+
+    def open_student(self, user=None):
+        from ca_program.views.student_view.student_gui import StudentGUI
+
+        self.student_window = StudentGUI(user=user)
+        self.student_window.show()
         self.close()
 
     def get_styles(self):

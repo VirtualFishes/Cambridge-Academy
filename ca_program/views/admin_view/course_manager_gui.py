@@ -1,4 +1,4 @@
-from ca_program.views.admin_base_manager_gui import AdminCrudWidget, FieldSpec
+from ca_program.views.admin_view.admin_base_manager_gui import AdminCrudWidget, FieldSpec
 
 
 class CourseManagerWidget(AdminCrudWidget):

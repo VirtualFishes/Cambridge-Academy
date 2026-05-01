@@ -13,7 +13,7 @@ class UserModel:
         email: str,
         birth_date,
         nationality: str,
-        cursor = None
+        cursor=None
     ) -> User:
 
         if cursor is None:
@@ -43,7 +43,7 @@ class UserModel:
             id_user=id_user,
             name=name,
             password=password,
-            role=role.value,
+            role=role,
             email=email,
             birth_date=birth_date,
             nationality=nationality,
@@ -98,6 +98,46 @@ class UserModel:
         finally:
             cursor.close()
             connection.close()
+
+    @staticmethod
+    def update_password(id_user: int, new_password: str, cursor=None) -> bool:
+        """
+        Actualiza la contraseña de un usuario existente.
+
+        Si recibe un cursor externo, la operación queda bajo la transacción
+        de quien lo invoca. Si no recibe cursor, abre y cierra su propia
+        conexión.
+        """
+        owns_connection = cursor is None
+        connection = None
+
+        if owns_connection:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+        try:
+            query = """
+                UPDATE users
+                SET password = %s
+                WHERE id_user = %s;
+            """
+            cursor.execute(query, (new_password, id_user))
+            updated = cursor.rowcount > 0
+
+            if owns_connection:
+                connection.commit()
+
+            return updated
+
+        except Exception:
+            if owns_connection and connection:
+                connection.rollback()
+            raise
+
+        finally:
+            if owns_connection:
+                cursor.close()
+                connection.close()
 
     @staticmethod
     def _map_to_entity(row: tuple) -> User:
