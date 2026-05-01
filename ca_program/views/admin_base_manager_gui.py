@@ -62,6 +62,7 @@ class AdminCrudWidget(QWidget):
         record_identity_label: str | None = None,
         current_record_payload_key: str | None = None,
         update_optional_fields: list[str] | None = None,
+        delete_method_names: list[str] | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -72,6 +73,7 @@ class AdminCrudWidget(QWidget):
         self.create_method_names = create_method_names
         self.list_method_names = list_method_names
         self.update_method_names = update_method_names or []
+        self.delete_method_names = delete_method_names or []
         self.fields = fields
         self.table_columns = table_columns
         self.entity_label = entity_label
@@ -84,12 +86,16 @@ class AdminCrudWidget(QWidget):
 
         self.inputs: dict[str, QWidget] = {}
         self.service_status = QLabel()
+        self.search_input = QLineEdit()
         self.table = QTableWidget()
         self.rows: list[Any] = []
+        self.filtered_rows: list[Any] = []
 
         self.form_title_label: QLabel | None = None
         self.selection_status_label: QLabel | None = None
         self.save_btn: QPushButton | None = None
+        self.clear_btn: QPushButton | None = None
+        self.delete_btn: QPushButton | None = None
         self.selected_record: Any | None = None
         self.selected_record_identity: Any | None = None
         self._populating_table = False
@@ -132,8 +138,11 @@ class AdminCrudWidget(QWidget):
         content_layout.setSpacing(18)
         root_layout.addLayout(content_layout, 1)
 
-        content_layout.addWidget(self._create_form_card(), 0)
-        content_layout.addWidget(self._create_table_card(), 1)
+        form_card = self._create_form_card()
+        table_card = self._create_table_card()
+
+        content_layout.addWidget(form_card, 0)
+        content_layout.addWidget(table_card, 1)
 
     def _create_form_card(self) -> QFrame:
         card = QFrame()
@@ -150,7 +159,7 @@ class AdminCrudWidget(QWidget):
         self.form_title_label.setObjectName("cardTitle")
         layout.addWidget(self.form_title_label)
 
-        if self._supports_update():
+        if self._supports_row_selection():
             self.selection_status_label = QLabel(self._initial_selection_text())
             self.selection_status_label.setObjectName("selectionStatus")
             self.selection_status_label.setWordWrap(True)
@@ -198,12 +207,42 @@ class AdminCrudWidget(QWidget):
         self.save_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.save_btn)
 
-        clear_btn = QPushButton("Limpiar formulario")
-        clear_btn.setObjectName("secondaryButton")
-        clear_btn.clicked.connect(self.clear_form)
-        clear_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        layout.addWidget(clear_btn)
+        secondary_actions_layout = QHBoxLayout()
+        secondary_actions_layout.setContentsMargins(0, 0, 0, 0)
+        secondary_actions_layout.setSpacing(10)
 
+        self.clear_btn = QPushButton("Limpiar formulario")
+        self.clear_btn.setObjectName("secondaryButton")
+        self.clear_btn.clicked.connect(self._handle_secondary_action)
+        self.clear_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        secondary_actions_layout.addWidget(self.clear_btn, 1)
+
+        if self._supports_delete():
+            self.delete_btn = QPushButton(f"Eliminar {self.entity_label.lower()}")
+            self.delete_btn.setObjectName("dangerButton")
+            self.delete_btn.setVisible(False)
+            self.delete_btn.clicked.connect(self.delete_record)
+            self.delete_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.delete_btn.setStyleSheet('''
+                QPushButton#dangerButton {
+                    background-color: #fff1f2;
+                    color: #991b1b;
+                    border: 1px solid #fecdd3;
+                    border-radius: 10px;
+                    padding: 9px 12px;
+                    font-weight: 700;
+                }
+                QPushButton#dangerButton:hover {
+                    background-color: #fee2e2;
+                    border: 1px solid #fca5a5;
+                }
+                QPushButton#dangerButton:pressed {
+                    background-color: #fecaca;
+                }
+            ''')
+            secondary_actions_layout.addWidget(self.delete_btn, 1)
+
+        layout.addLayout(secondary_actions_layout)
         return card
 
     def _create_table_card(self) -> QFrame:
@@ -215,72 +254,151 @@ class AdminCrudWidget(QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
 
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(12)
         title = QLabel(f"{self._plural_label()} registrados")
         title.setObjectName("cardTitle")
-        layout.addWidget(title)
-
-        if self._supports_update():
-            hint = QLabel("Selecciona un registro de la tabla para cargarlo en el formulario y modificarlo.")
-            hint.setObjectName("tableHint")
-            hint.setWordWrap(True)
-            layout.addWidget(hint)
+        self.search_input.setPlaceholderText(f"Buscar {self.entity_label.lower()} por nombre")
+        self.search_input.setMinimumWidth(260)
+        self.search_input.textChanged.connect(self.apply_filter)
+        toolbar.addWidget(title)
+        toolbar.addStretch()
+        toolbar.addWidget(self.search_input, 1)
+        layout.addLayout(toolbar)
 
         self.table.setColumnCount(len(self.table_columns))
-        self.table.setHorizontalHeaderLabels([column[0] for column in self.table_columns])
-        self.table.setAlternatingRowColors(True)
+        self.table.setHorizontalHeaderLabels([self._column_header(column) for column in self.table_columns])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(34)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setWordWrap(True)
 
-        for index, column in enumerate(self.table_columns):
-            if len(column) == 3:
-                self.table.setColumnWidth(index, int(column[2]))
+        if self._supports_row_selection():
+            self.table.itemSelectionChanged.connect(self._handle_table_selection)
 
-        if self._supports_update():
-            self.table.itemSelectionChanged.connect(self._handle_row_selection)
+        header = self.table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setDefaultAlignment(Qt.AlignCenter)
+        header.setMinimumSectionSize(90)
+        header.setDefaultSectionSize(135)
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setFixedHeight(48)
 
+        self._apply_column_widths()
+        self.table.setSortingEnabled(True)
         layout.addWidget(self.table, 1)
+
         return card
 
     def _make_input(self, field: FieldSpec) -> QWidget:
         if field.field_type == "textarea":
             editor = QTextEdit()
             editor.setPlaceholderText(field.placeholder)
-            editor.setMinimumHeight(90)
+            editor.setFixedHeight(70)
+            editor.setTabChangesFocus(True)
+            editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             return editor
 
         if field.field_type == "date":
             editor = QDateEdit()
             editor.setCalendarPopup(True)
             editor.setDisplayFormat("yyyy-MM-dd")
-            editor.setDate(self._to_qdate(field.default) or QDate.currentDate())
+            if field.default:
+                editor.setDate(QDate.fromString(str(field.default), "yyyy-MM-dd"))
+            else:
+                editor.setDate(QDate.currentDate())
+            editor.setMinimumHeight(38)
+            editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             return editor
 
         if field.field_type == "int":
             editor = QSpinBox()
-            editor.setButtonSymbols(QAbstractSpinBox.NoButtons)
-            editor.setRange(int(field.minimum if field.minimum is not None else 0), int(field.maximum if field.maximum is not None else 999999999))
+            editor.setMinimum(int(field.minimum if field.minimum is not None else 0))
+            editor.setMaximum(int(field.maximum if field.maximum is not None else 1000000))
             editor.setValue(int(field.default if field.default is not None else editor.minimum()))
+            editor.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            editor.setMinimumHeight(38)
+            editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             return editor
 
         if field.field_type == "float":
             editor = QDoubleSpinBox()
-            editor.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            editor.setMinimum(float(field.minimum if field.minimum is not None else 0))
+            editor.setMaximum(float(field.maximum if field.maximum is not None else 1000000))
             editor.setDecimals(2)
-            editor.setRange(float(field.minimum if field.minimum is not None else 0), float(field.maximum if field.maximum is not None else 999999999))
             editor.setValue(float(field.default if field.default is not None else editor.minimum()))
+            editor.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            editor.setMinimumHeight(38)
+            editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             return editor
 
         editor = QLineEdit()
         editor.setPlaceholderText(field.placeholder)
+        editor.setMinimumHeight(38)
+        editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        if field.default is not None:
+            editor.setText(str(field.default))
         if field.field_type == "password":
             editor.setEchoMode(QLineEdit.Password)
         return editor
+
+    def _read_input_value(self, field: FieldSpec) -> Any:
+        editor = self.inputs[field.key]
+        if isinstance(editor, QTextEdit):
+            return editor.toPlainText().strip()
+        if isinstance(editor, QLineEdit):
+            return editor.text().strip()
+        if isinstance(editor, QDateEdit):
+            return editor.date().toString("yyyy-MM-dd")
+        if isinstance(editor, QSpinBox):
+            return editor.value()
+        if isinstance(editor, QDoubleSpinBox):
+            return float(editor.value())
+        return None
+
+    def _set_input_value(self, field: FieldSpec, value: Any):
+        editor = self.inputs[field.key]
+
+        if isinstance(editor, QTextEdit):
+            editor.setPlainText("" if value is None else str(value))
+            return
+
+        if isinstance(editor, QLineEdit):
+            editor.setText("" if value is None else str(value))
+            return
+
+        if isinstance(editor, QDateEdit):
+            parsed_date = QDate.fromString(str(value), "yyyy-MM-dd") if value is not None else QDate()
+            editor.setDate(parsed_date if parsed_date.isValid() else QDate.currentDate())
+            return
+
+        if isinstance(editor, QSpinBox):
+            editor.setValue(int(value if value is not None else editor.minimum()))
+            return
+
+        if isinstance(editor, QDoubleSpinBox):
+            editor.setValue(float(value if value is not None else editor.minimum()))
+            return
+
+    def _collect_payload(self, for_update: bool = False) -> dict[str, Any] | None:
+        payload: dict[str, Any] = {}
+        missing: list[str] = []
+        for field in self.fields:
+            value = self._read_input_value(field)
+            payload[field.key] = value
+            is_optional_for_update = for_update and field.key in self.update_optional_fields
+            if field.required and not is_optional_for_update and (value is None or value == ""):
+                missing.append(field.label)
+        if missing:
+            QMessageBox.warning(self, "Campos obligatorios", "Completa: " + ", ".join(missing))
+            return None
+        return payload
 
     def _load_service_target(self) -> Any:
         try:
@@ -315,12 +433,39 @@ class AdminCrudWidget(QWidget):
         except TypeError:
             return method(**payload)
 
+    def _extract_rows(self, result: Any) -> list[Any]:
+        if result is None:
+            return []
+        if isinstance(result, dict):
+            if result.get("success") is False:
+                print(f"No fue posible consultar la información: {result.get('message')}")
+                raise RuntimeError("No fue posible consultar la información. Intenta nuevamente.")
+            for key in ("data", "records", "items", "students", "courses", "professors", "result"):
+                value = result.get(key)
+                if isinstance(value, list):
+                    return value
+            return []
+        if isinstance(result, list):
+            return result
+        if isinstance(result, tuple):
+            return list(result)
+        return []
+
+    def _validate_action_result(self, result: Any, action_name: str = "guardar"):
+        if isinstance(result, dict) and result.get("success") is False:
+            print(f"No fue posible {action_name} el registro: {result.get('message')}")
+            user_message = result.get("message") or "Verifica los datos e intenta nuevamente."
+            raise RuntimeError(user_message)
+
     def _handle_primary_action(self):
         if self._supports_update() and self.selected_record is not None:
             self.update_record()
             return
 
         self.save_record()
+
+    def _handle_secondary_action(self):
+        self.clear_form()
 
     def save_record(self):
         payload = self._collect_payload(for_update=False)
@@ -391,6 +536,67 @@ class AdminCrudWidget(QWidget):
                 "Ocurrió un inconveniente al modificar el registro. Intenta nuevamente.",
             )
 
+    def delete_record(self):
+        if not self._supports_delete():
+            return
+
+        if self.selected_record is None or self.selected_record_identity in (None, ""):
+            QMessageBox.information(
+                self,
+                "Selecciona un registro",
+                f"Selecciona un {self.entity_label.lower()} de la tabla antes de eliminar.",
+            )
+            return
+
+        record_name = (
+            self._get_field_value_for_form(self.selected_record, "name")
+            or self._get_field_value_for_form(self.selected_record, "title")
+            or self._get_field_value_for_form(self.selected_record, "course_name")
+            or "registro seleccionado"
+        )
+
+        confirmation_text = (
+            f"¿Eliminar {self.entity_label.lower()}?\n\n"
+            f"Se eliminará permanentemente este registro:\n"
+            f"{record_name}\n"
+            f"{self.record_identity_label}: {self.selected_record_identity}\n\n"
+            "Esta acción no se puede deshacer."
+        )
+
+        response = QMessageBox.warning(
+            self,
+            f"Eliminar {self.entity_label.lower()}",
+            confirmation_text,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if response != QMessageBox.Yes:
+            return
+
+        payload: dict[str, Any] = {}
+        if self.record_identity_field:
+            payload[self.record_identity_field] = self.selected_record_identity
+        if self.current_record_payload_key:
+            payload[self.current_record_payload_key] = self.selected_record_identity
+
+        try:
+            result = self._call_service(self.delete_method_names, payload)
+            self._validate_action_result(result, "eliminar")
+            QMessageBox.information(self, "Registro eliminado", f"{self.entity_label} eliminado correctamente.")
+            self.clear_form()
+            self.refresh_data()
+        except ServiceUnavailable as exc:
+            QMessageBox.warning(self, "Información no disponible", str(exc))
+        except RuntimeError as exc:
+            QMessageBox.warning(self, "No fue posible eliminar", str(exc))
+        except Exception as exc:
+            print(f"Error inesperado al eliminar {self.entity_label}: {exc}")
+            QMessageBox.critical(
+                self,
+                "No fue posible eliminar",
+                "Ocurrió un inconveniente al eliminar el registro. Intenta nuevamente.",
+            )
+
     def refresh_data(self):
         try:
             result = self._call_service(self.list_method_names)
@@ -408,218 +614,247 @@ class AdminCrudWidget(QWidget):
             self.service_status.setProperty("state", "warning")
         self.service_status.style().unpolish(self.service_status)
         self.service_status.style().polish(self.service_status)
-        self._populate_table(self.rows)
+        self.apply_filter()
 
-    def _populate_table(self, rows: list[Any]):
+    def apply_filter(self):
+        text = self.search_input.text().strip().lower()
+        filtered = []
+        for row in self.rows:
+            name = str(self._get_value(row, "name") or self._get_value(row, "user.name") or "").lower()
+            if not text or text in name:
+                filtered.append(row)
+        self.filtered_rows = filtered
+        self._fill_table(filtered)
+
+    def _fill_table(self, rows: list[Any]):
         self._populating_table = True
-        self.table.setRowCount(0)
-
-        for row_index, record in enumerate(rows):
-            self.table.insertRow(row_index)
-            for column_index, column in enumerate(self.table_columns):
-                value = self._get_value(record, column[1])
-                item = QTableWidgetItem(self._format_value(value))
-                item.setToolTip(self._format_value(value))
-                item.setData(Qt.UserRole, row_index)
-                self.table.setItem(row_index, column_index, item)
-
+        if self._supports_row_selection():
+            self._set_edit_state(None)
+        self.table.setSortingEnabled(False)
+        self.table.clearSelection()
+        self.table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            for col_index, column in enumerate(self.table_columns):
+                value = self._get_value(row, self._column_path(column))
+                item = QTableWidgetItem("" if value is None else str(value))
+                item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                item.setData(Qt.UserRole, row)
+                self.table.setItem(row_index, col_index, item)
+        self._apply_column_widths()
+        self.table.setSortingEnabled(True)
         self._populating_table = False
 
-    def _handle_row_selection(self):
-        if self._populating_table:
+    def _handle_table_selection(self):
+        if self._populating_table or self._loading_form:
             return
 
         selected_items = self.table.selectedItems()
         if not selected_items:
+            self._set_edit_state(None)
             return
 
-        row_index = selected_items[0].data(Qt.UserRole)
-        if row_index is None or row_index >= len(self.rows):
+        selected_row = selected_items[0].row()
+        first_item = self.table.item(selected_row, 0)
+        row_data = first_item.data(Qt.UserRole) if first_item is not None else None
+        if row_data is None:
             return
 
-        self._load_record_into_form(self.rows[row_index])
+        self._load_record_into_form(row_data)
 
-    def _load_record_into_form(self, record: Any):
+    def _load_record_into_form(self, row: Any):
         self._loading_form = True
-        self.selected_record = record
-        self.selected_record_identity = self._get_field_value_for_form(record, self.record_identity_field)
+        try:
+            for field in self.fields:
+                if field.field_type == "password":
+                    self._set_input_value(field, "")
+                    editor = self.inputs.get(field.key)
+                    if isinstance(editor, QLineEdit):
+                        editor.setPlaceholderText("Dejar vacío para conservar la contraseña actual")
+                    continue
 
-        for field in self.fields:
-            value = self._get_field_value_for_form(record, field.key)
-            if field.key in self.update_optional_fields:
-                value = ""
-            self._set_input_value(field, value)
+                value = self._get_field_value_for_form(row, field.key)
+                self._set_input_value(field, value)
+        finally:
+            self._loading_form = False
 
-        if self.form_title_label:
-            self.form_title_label.setText(f"Modificar {self.entity_label.lower()}")
-        if self.selection_status_label:
-            self.selection_status_label.setText(
-                f"Registro seleccionado. {self.record_identity_label}: {self.selected_record_identity}"
-            )
-        if self.save_btn:
-            self.save_btn.setText("Guardar cambios")
+        self._set_edit_state(row)
 
-        self._loading_form = False
-
-    def clear_form(self):
-        self.selected_record = None
+    def _set_edit_state(self, row: Any | None):
+        self.selected_record = row
         self.selected_record_identity = None
-        self.table.clearSelection()
 
-        for field in self.fields:
-            self._set_input_value(field, field.default)
+        if row is not None and self.record_identity_field:
+            self.selected_record_identity = self._get_field_value_for_form(row, self.record_identity_field)
 
-        if self.form_title_label:
-            self.form_title_label.setText(f"Registrar {self.entity_label.lower()}")
-        if self.selection_status_label:
-            self.selection_status_label.setText(self._initial_selection_text())
-        if self.save_btn:
-            self.save_btn.setText("Guardar registro")
+        if self.form_title_label is not None:
+            if row is None:
+                self.form_title_label.setText(f"Registrar {self.entity_label.lower()}")
+            else:
+                self.form_title_label.setText(f"Editar {self.entity_label.lower()}")
 
-    def _collect_payload(self, for_update: bool = False) -> dict[str, Any] | None:
-        payload: dict[str, Any] = {}
-        missing: list[str] = []
-        for field in self.fields:
-            value = self._read_input_value(field)
-            payload[field.key] = value
-            is_optional_for_update = for_update and field.key in self.update_optional_fields
-            if field.required and not is_optional_for_update and (value is None or value == ""):
-                missing.append(field.label)
-        if missing:
-            QMessageBox.warning(self, "Campos obligatorios", "Completa: " + ", ".join(missing))
-            return None
-        return payload
+        if self.selection_status_label is not None:
+            if row is None:
+                self.selection_status_label.setText(self._initial_selection_text())
+                self.selection_status_label.setProperty("state", "info")
+            else:
+                self.selection_status_label.setText(self._selected_selection_text())
+                self.selection_status_label.setProperty("state", "selected")
+            self.selection_status_label.style().unpolish(self.selection_status_label)
+            self.selection_status_label.style().polish(self.selection_status_label)
 
-    def _read_input_value(self, field: FieldSpec):
-        editor = self.inputs[field.key]
-        if isinstance(editor, QTextEdit):
-            return editor.toPlainText().strip()
-        if isinstance(editor, QLineEdit):
-            return editor.text().strip()
-        if isinstance(editor, QDateEdit):
-            return editor.date().toString("yyyy-MM-dd")
-        if isinstance(editor, QSpinBox):
-            return editor.value()
-        if isinstance(editor, QDoubleSpinBox):
-            return editor.value()
-        return None
+        if self.save_btn is not None:
+            self.save_btn.setText("Guardar registro" if row is None else "Guardar cambios")
 
-    def _set_input_value(self, field: FieldSpec, value: Any):
-        editor = self.inputs[field.key]
-        if isinstance(editor, QTextEdit):
-            editor.setPlainText("" if value is None else str(value))
-            return
-        if isinstance(editor, QLineEdit):
-            editor.setText("" if value is None else str(value))
-            return
-        if isinstance(editor, QDateEdit):
-            editor.setDate(self._to_qdate(value) or QDate.currentDate())
-            return
-        if isinstance(editor, QSpinBox):
-            editor.setValue(int(value if value is not None else editor.minimum()))
-            return
-        if isinstance(editor, QDoubleSpinBox):
-            editor.setValue(float(value if value is not None else editor.minimum()))
-            return
+        if self.clear_btn is not None:
+            self.clear_btn.setText("Limpiar formulario" if row is None else "Cancelar edición")
 
-    def _extract_rows(self, result: Any) -> list[Any]:
-        if result is None:
-            return []
-        if isinstance(result, dict):
-            if result.get("success") is False:
-                print(f"No fue posible consultar la información: {result.get('message')}")
-                raise RuntimeError("No fue posible consultar la información. Intenta nuevamente.")
-            for key in ("data", "records", "items", "students", "courses", "professors", "result"):
-                value = result.get(key)
-                if isinstance(value, list):
+        if self.delete_btn is not None:
+            self.delete_btn.setVisible(row is not None and self._supports_delete())
+
+    def _get_field_value_for_form(self, row: Any, field_key: str) -> Any:
+        value = self._get_value(row, field_key)
+        if value not in (None, ""):
+            return value
+        return self._get_value(row, f"user.{field_key}")
+
+    def _get_value(self, row: Any, path: str) -> Any:
+        if "|" in path:
+            for option in path.split("|"):
+                value = self._get_value(row, option.strip())
+                if value not in (None, ""):
                     return value
-            return []
-        if isinstance(result, list):
-            return result
-        if isinstance(result, tuple):
-            return list(result)
-        return []
+            return None
 
-    def _validate_action_result(self, result: Any, action_name: str = "guardar"):
-        if isinstance(result, dict) and result.get("success") is False:
-            print(f"No fue posible {action_name} el registro: {result.get('message')}")
-            user_message = result.get("message") or "Verifica los datos e intenta nuevamente."
-            raise RuntimeError(user_message)
+        if isinstance(row, dict):
+            current: Any = row
+            for part in path.split("."):
+                if isinstance(current, dict):
+                    current = current.get(part)
+                else:
+                    current = getattr(current, part, None)
+                if current is None:
+                    return None
+            return current
 
-    def _get_value(self, record: Any, expression: str):
-        for path in str(expression).split("|"):
-            value = self._resolve_path(record, path.strip())
-            if value not in (None, ""):
-                return value
-        return ""
+        if isinstance(row, (list, tuple)):
+            keys = [field.key for field in self.fields]
+            if path in keys:
+                index = keys.index(path)
+                if index < len(row):
+                    return row[index]
+            return None
 
-    def _get_field_value_for_form(self, record: Any, field_key: str | None):
-        if not field_key:
-            return ""
-        direct = self._resolve_path(record, field_key)
-        if direct not in (None, ""):
-            return direct
-        user_value = self._resolve_path(record, f"user.{field_key}")
-        if user_value not in (None, ""):
-            return user_value
-        professor_value = self._resolve_path(record, f"professor.{field_key}")
-        if professor_value not in (None, ""):
-            return professor_value
-        return ""
-
-    def _resolve_path(self, value: Any, path: str):
-        current = value
+        current = row
         for part in path.split("."):
+            current = getattr(current, part, None)
             if current is None:
                 return None
-            if isinstance(current, dict):
-                current = current.get(part)
-            else:
-                current = getattr(current, part, None)
         return current
 
-    def _format_value(self, value: Any) -> str:
-        if value is None:
-            return ""
-        if hasattr(value, "strftime"):
-            try:
-                return value.strftime("%Y-%m-%d")
-            except Exception:
-                return str(value)
-        return str(value)
+    def clear_form(self):
+        self._loading_form = True
+        try:
+            for field in self.fields:
+                editor = self.inputs[field.key]
+                if isinstance(editor, QLineEdit):
+                    editor.setText(str(field.default or ""))
+                    editor.setPlaceholderText(field.placeholder)
+                elif isinstance(editor, QTextEdit):
+                    editor.clear()
+                elif isinstance(editor, QDateEdit):
+                    if field.default:
+                        editor.setDate(QDate.fromString(str(field.default), "yyyy-MM-dd"))
+                    else:
+                        editor.setDate(QDate.currentDate())
+                elif isinstance(editor, QSpinBox):
+                    editor.setValue(int(field.default if field.default is not None else editor.minimum()))
+                elif isinstance(editor, QDoubleSpinBox):
+                    editor.setValue(float(field.default if field.default is not None else editor.minimum()))
+        finally:
+            self._loading_form = False
 
-    def _to_qdate(self, value: Any) -> QDate | None:
-        if value in (None, ""):
-            return None
-        if isinstance(value, QDate):
-            return value
-        if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
-            return QDate(int(value.year), int(value.month), int(value.day))
-        text = str(value).strip()
-        qdate = QDate.fromString(text, "yyyy-MM-dd")
-        return qdate if qdate.isValid() else None
+        if self._supports_row_selection():
+            self.table.clearSelection()
+            self._set_edit_state(None)
 
     def _supports_update(self) -> bool:
         return bool(self.update_method_names)
 
+    def _supports_delete(self) -> bool:
+        return bool(self.delete_method_names)
+
+    def _supports_row_selection(self) -> bool:
+        return self._supports_update() or self._supports_delete()
+
+    def _column_header(self, column: TableColumnSpec) -> str:
+        return column[0]
+
+    def _column_path(self, column: TableColumnSpec) -> str:
+        return column[1]
+
+    def _column_width(self, column: TableColumnSpec) -> int:
+        if len(column) >= 3:
+            return int(column[2])
+        return 135
+
+    def _apply_column_widths(self):
+        for index, column in enumerate(self.table_columns):
+            self.table.setColumnWidth(index, self._column_width(column))
+
+    def _plural_label(self) -> str:
+        lower_label = self.entity_label.lower()
+        if lower_label == "curso":
+            return "Cursos"
+        if lower_label == "profesor":
+            return "Profesores"
+        if lower_label == "estudiante":
+            return "Estudiantes"
+        return f"{self.entity_label}s"
+
+    def _initial_selection_text(self) -> str:
+        if self._supports_update() and self._supports_delete():
+            return "Selecciona un registro de la tabla para modificarlo o eliminarlo."
+        if self._supports_update():
+            return "Selecciona un registro de la tabla para modificarlo."
+        if self._supports_delete():
+            return "Selecciona un registro de la tabla para eliminarlo."
+        return "Selecciona un registro de la tabla."
+
+    def _selected_selection_text(self) -> str:
+        parts: list[str] = []
+
+        if self._supports_update():
+            parts.append("Edita los campos necesarios y guarda los cambios.")
+
+        if self._supports_delete():
+            parts.append("También puedes eliminar el registro si corresponde.")
+
+        if self._has_password_field():
+            parts.append("La contraseña puede quedar vacía para conservar la actual.")
+
+        return " ".join(parts) if parts else "Registro seleccionado."
+
+    def _has_password_field(self) -> bool:
+        return any(field.field_type == "password" for field in self.fields)
+
     def _infer_record_identity_label(self) -> str:
         if not self.record_identity_field:
             return "Identificador"
-        for column in self.table_columns:
-            if column[1] == self.record_identity_field:
-                return column[0].replace("\n", " ")
-        return "Identificador"
 
-    def _initial_selection_text(self) -> str:
-        return f"Selecciona un {self.entity_label.lower()} de la tabla para modificarlo."
+        for field in self.fields:
+            if field.key == self.record_identity_field:
+                return field.label
 
-    def _plural_label(self) -> str:
-        lower = self.entity_label.lower()
-        if lower.endswith("z"):
-            return self.entity_label[:-1] + "ces"
-        if lower.endswith("s"):
-            return self.entity_label
-        return self.entity_label + "s"
+        friendly_labels = {
+            "code_course": "Código",
+            "id_student": "Identificación",
+            "id_professor": "Identificación",
+            "id_user": "Identificación",
+        }
+        return friendly_labels.get(self.record_identity_field, "Identificador")
 
     def _unavailable_message(self) -> str:
-        return "La información no está disponible en este momento. Verifica la conexión e intenta de nuevo."
+        return (
+            "La información no está disponible en este momento. "
+            "Verifica la conexión o intenta actualizar nuevamente."
+        )

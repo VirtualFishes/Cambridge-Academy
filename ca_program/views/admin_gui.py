@@ -262,15 +262,6 @@ class AdminGUI(QMainWindow):
             padding: 8px 12px;
         }
 
-        QLabel#selectionStatus, QLabel#tableHint {
-            color: #475569;
-            background-color: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 8px 10px;
-            font-size: 13px;
-        }
-
         QScrollArea#formScrollArea {
             background-color: transparent;
             border: none;

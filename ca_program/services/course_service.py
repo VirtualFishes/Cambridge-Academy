@@ -25,7 +25,7 @@ class CourseService:
             return {
                 "success": True,
                 "message": "Curso registrado correctamente.",
-                "course": course_data,
+                "course": course,
                 "entity": course,
                 "data": course_data,
             }
@@ -41,6 +41,112 @@ class CourseService:
             return {
                 "success": False,
                 "message": "Ocurrió un error al registrar el curso.",
+            }
+
+    @staticmethod
+    def update_course(data: dict | None = None, **kwargs) -> dict:
+        """
+        Modifica la información de un curso registrado.
+
+        El código del curso debe llegar en code_course, current_code_course,
+        selected_code_course o course_code. El código se usa como identificador
+        estable del registro y no se modifica desde esta operación.
+        """
+        payload = CourseService._normalize_payload(data, kwargs)
+
+        try:
+            clean_data = CourseService._validate_update_payload(payload)
+            code_course = clean_data.pop("code_course")
+
+            if not CourseModel.course_exists(code_course):
+                return {
+                    "success": False,
+                    "message": "El curso que intenta modificar no existe.",
+                }
+
+            if not CourseModel.professor_exists(clean_data["id_professor"]):
+                return {
+                    "success": False,
+                    "message": "El profesor asignado no existe.",
+                }
+
+            course = CourseModel.update_course(
+                code_course=code_course,
+                **clean_data,
+            )
+            course_data = CourseService._course_to_dict(course)
+
+            return {
+                "success": True,
+                "message": "Curso modificado correctamente.",
+                "course": course,
+                "entity": course,
+                "data": course_data,
+            }
+
+        except ValueError as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al modificar el curso.",
+            }
+
+
+    @staticmethod
+    def delete_course(code_course: int | str | dict | None = None, data: dict | None = None, **kwargs) -> dict:
+        """
+        Elimina permanentemente un curso registrado.
+
+        Acepta el código del curso como argumento directo o dentro de un
+        diccionario usando claves como code_course, selected_code_course o
+        course_code. La eliminación real de registros asociados se delega al
+        modelo para mantener la capa de servicio libre de SQL.
+        """
+        if isinstance(code_course, dict) and data is None:
+            data = code_course
+            code_course = None
+
+        payload = CourseService._normalize_payload(data, kwargs)
+        if code_course not in (None, ""):
+            payload["code_course"] = code_course
+
+        try:
+            code_course = CourseService._validate_delete_payload(payload)
+
+            if not CourseModel.course_exists(code_course):
+                return {
+                    "success": False,
+                    "message": "El curso que intenta eliminar no existe.",
+                }
+
+            course = CourseModel.delete_course(code_course)
+            course_data = CourseService._course_to_dict(course)
+
+            return {
+                "success": True,
+                "message": "Curso eliminado correctamente.",
+                "course": course,
+                "entity": course,
+                "data": course_data,
+            }
+
+        except ValueError as e:
+            return {
+                "success": False,
+                "message": str(e),
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al eliminar el curso.",
             }
 
     @staticmethod
@@ -100,6 +206,81 @@ class CourseService:
             return {
                 "success": False,
                 "message": "Ocurrió un error al consultar el curso.",
+            }
+
+    @staticmethod
+    def get_students_by_course(code_course: int | str) -> dict:
+        try:
+            code_course = str(code_course).strip()
+            if not code_course:
+                return {
+                    "success": False,
+                    "message": "El código del curso es obligatorio.",
+                    "students": [],
+                    "data": [],
+                }
+
+            if not CourseModel.get_course_by_code(code_course):
+                return {
+                    "success": False,
+                    "message": "Curso no encontrado.",
+                    "students": [],
+                    "data": [],
+                }
+
+            students = CourseModel.get_students_by_course(code_course)
+            student_records = [CourseService._student_to_dict(student) for student in students]
+
+            return {
+                "success": True,
+                "message": "Estudiantes del curso consultados correctamente.",
+                "students": student_records,
+                "entities": students,
+                "data": student_records,
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al consultar los estudiantes del curso.",
+                "students": [],
+                "entities": [],
+                "data": [],
+            }
+
+    @staticmethod
+    def search_courses_by_name(name: str) -> dict:
+        try:
+            name = str(name).strip().lower()
+            if not name:
+                return CourseService.get_courses()
+
+            result = CourseService.get_courses()
+            if not result.get("success"):
+                return result
+
+            courses = result.get("courses", [])
+            filtered_courses = [
+                course
+                for course in courses
+                if name in str(course.get("name", "")).lower()
+            ]
+
+            return {
+                "success": True,
+                "message": "Cursos filtrados correctamente.",
+                "courses": filtered_courses,
+                "data": filtered_courses,
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al buscar cursos.",
+                "courses": [],
+                "data": [],
             }
 
     @staticmethod
@@ -192,6 +373,51 @@ class CourseService:
         }
 
     @staticmethod
+    def _validate_update_payload(payload: dict) -> dict:
+        code_course = CourseService._read_first(
+            payload,
+            "code_course",
+            "current_code_course",
+            "selected_code_course",
+            "course_code",
+            "current_course_code",
+            "selected_course_code",
+        )
+
+        if code_course in (None, ""):
+            raise ValueError("El código del curso es obligatorio para modificar el registro.")
+
+        code_course = str(code_course).strip()
+        if not code_course:
+            raise ValueError("El código del curso es obligatorio para modificar el registro.")
+
+        clean_data = CourseService._validate_registration_payload(payload)
+        clean_data["code_course"] = code_course
+        return clean_data
+
+
+    @staticmethod
+    def _validate_delete_payload(payload: dict) -> str:
+        code_course = CourseService._read_first(
+            payload,
+            "code_course",
+            "current_code_course",
+            "selected_code_course",
+            "course_code",
+            "current_course_code",
+            "selected_course_code",
+        )
+
+        if code_course in (None, ""):
+            raise ValueError("El código del curso es obligatorio para eliminar el registro.")
+
+        code_course = str(code_course).strip()
+        if not code_course:
+            raise ValueError("El código del curso es obligatorio para eliminar el registro.")
+
+        return code_course
+
+    @staticmethod
     def _read_first(payload: dict, *keys):
         for key in keys:
             value = payload.get(key)
@@ -209,9 +435,11 @@ class CourseService:
     @staticmethod
     def _parse_int(value: Any, error_message: str) -> int:
         try:
-            return int(value)
+            parsed_value = int(value)
         except (TypeError, ValueError):
             raise ValueError(error_message)
+
+        return parsed_value
 
     @staticmethod
     def _parse_date(value: Any, error_message: str) -> date:
@@ -259,10 +487,33 @@ class CourseService:
             "enrolled_students": getattr(course, "enrolled_students", 0),
         }
 
+    @staticmethod
+    def _student_to_dict(student) -> dict:
+        user = getattr(student, "user", None)
+
+        return {
+            "id_student": getattr(student, "id_student", ""),
+            "name": getattr(user, "name", ""),
+            "email": getattr(user, "email", ""),
+            "birth_date": getattr(user, "birth_date", ""),
+            "nationality": getattr(user, "nationality", ""),
+        }
+
     create_course = register_course
     add_course = register_course
     save_course = register_course
     register = register_course
+
+    modify_course = update_course
+    edit_course = update_course
+    update = update_course
+    save_course_changes = update_course
+
+    remove_course = delete_course
+    delete_by_code = delete_course
+    delete_by_id = delete_course
+    delete = delete_course
+    destroy_course = delete_course
 
     list_courses = get_courses
     get_all_courses = get_courses

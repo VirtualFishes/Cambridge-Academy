@@ -40,7 +40,7 @@ class AdminDashboardWidget(QWidget):
             (
                 "Cursos",
                 "Oferta académica",
-                "Registra y consulta cursos, horarios, fechas, precios y profesor asignado.",
+                "Registra cursos, horarios, fechas, precios y profesor asignado.",
                 "courses",
             ),
             (

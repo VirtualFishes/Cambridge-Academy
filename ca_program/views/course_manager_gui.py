@@ -5,13 +5,16 @@ class CourseManagerWidget(AdminCrudWidget):
     def __init__(self, parent=None):
         super().__init__(
             title="Gestión de cursos",
-            description="Registra y consulta la información de la oferta académica de Cambridge Academy.",
+            description="Registra, consulta, actualiza y elimina la información de la oferta académica de Cambridge Academy.",
             service_module="ca_program.services.course_service",
             service_class="CourseService",
             create_method_names=["register_course", "create_course", "add_course", "save_course", "register"],
             list_method_names=["get_courses", "list_courses", "get_all_courses", "consult_courses", "get_all"],
+            update_method_names=["update_course", "modify_course", "edit_course", "save_course_changes", "update"],
+            delete_method_names=["delete_course", "remove_course", "delete_by_code", "delete_by_id", "delete", "destroy_course"],
             record_identity_field="code_course",
             record_identity_label="Código",
+            current_record_payload_key="current_code_course",
             fields=[
                 FieldSpec("name", "Nombre", "Nombre del curso"),
                 FieldSpec("description", "Descripción", "Resumen breve del curso", "textarea"),
