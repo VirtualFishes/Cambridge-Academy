@@ -1,45 +1,48 @@
-from ca_program.services.auth_service import AuthService
-from ca_program.entities.user import User
+from ca_program.models.user_model import UserModel
 
 
 class LoginService:
-    """
-    Servicio que expone la lógica de inicio de sesión a la capa de vista.
-    Actúa como intermediario entre login_gui y AuthService.
-    """
 
-    def __init__(self, auth_service: AuthService):
-        self._auth = auth_service
-
-    def login(self, name: str, password: str) -> tuple[bool, str, User | None]:
+    @staticmethod
+    def login(name: str, password: str) -> dict:
         """
-        Intenta iniciar sesión con las credenciales dadas.
+        Realiza el proceso de autenticación de un usuario.
 
-        Retorna:
-            (True, "", User)          → Login exitoso
-            (False, mensaje, None)    → Login fallido con razón
+        Retorna un diccionario con:
+        - success: bool
+        - message: str
+        - user: User (opcional)
+        - role: str (opcional)
         """
-        name = name.strip()
-        password = password.strip()
 
-        if not name or not password:
-            return False, "Por favor completa todos los campos.", None
+        try:
+            user = UserModel.get_user_by_name(name)
 
-        user = self._auth.authenticate(name, password)
+            # Usuario no existe
+            if not user:
+                return {
+                    "success": False,
+                    "message": "Usuario no encontrado"
+                }
 
-        if user is None:
-            return False, "Usuario o contraseña incorrectos.", None
+            # Contraseña incorrecta
+            if not UserModel.validate_password(user, password):
+                return {
+                    "success": False,
+                    "message": "Contraseña incorrecta"
+                }
 
-        return True, "", user
+            # Login exitoso
+            return {
+                "success": True,
+                "message": "Inicio de sesión exitoso",
+                "user": user,
+                "role": user.role.value  # útil para redirección en la GUI
+            }
 
-    def get_redirect_view(self, user: User) -> str:
-        """
-        Determina a qué vista redirigir al usuario según su rol.
-
-        Retorna:
-            'admin'     → Panel de administración
-            'professor' → Panel del profesor
-            'student'   → Panel del estudiante
-            'unknown'   → Vista por defecto
-        """
-        return user.role if user.role in ("admin", "professor", "student") else "unknown"
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error durante el inicio de sesión"
+            }

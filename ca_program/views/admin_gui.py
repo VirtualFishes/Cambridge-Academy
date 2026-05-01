@@ -1,528 +1,379 @@
-"""
-Vista del panel de administración.
-Solo accesible para usuarios con rol 'admin'.
-"""
-
-import sys
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QFrame, QTableWidget, QTableWidgetItem,
-    QHeaderView, QMessageBox, QSizePolicy, QStackedWidget, QScrollArea
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont, QColor
 
-from ca_program.services.auth_service import AuthService
-from ca_program.models.user_model import UserModel
-from ca_program.entities.user import User
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Estilos
-# ──────────────────────────────────────────────────────────────────────────────
-
-COLORS = {
-    "bg":           "#0d0d0d",
-    "sidebar":      "#111111",
-    "card":         "#161616",
-    "border":       "#222222",
-    "accent":       "#4f8ef7",
-    "accent_hover": "#3a72d8",
-    "danger":       "#e05c5c",
-    "danger_hover": "#c04040",
-    "text":         "#f0f0f0",
-    "subtext":      "#777777",
-    "row_alt":      "#1a1a1a",
-    "selected":     "#1c2e4a",
-}
-
-STYLESHEET = f"""
-QWidget {{
-    background-color: {COLORS['bg']};
-    color: {COLORS['text']};
-    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
-    font-size: 13px;
-}}
-
-/* ── Sidebar ── */
-QFrame#sidebar {{
-    background-color: {COLORS['sidebar']};
-    border-right: 1px solid {COLORS['border']};
-}}
-
-QLabel#app_name {{
-    color: {COLORS['accent']};
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    padding: 0px 20px;
-}}
-
-QLabel#app_version {{
-    color: {COLORS['subtext']};
-    font-size: 10px;
-    padding: 0px 20px;
-}}
-
-QPushButton#nav_btn {{
-    background: transparent;
-    color: {COLORS['subtext']};
-    border: none;
-    text-align: left;
-    padding: 10px 20px;
-    font-size: 13px;
-    border-radius: 0px;
-}}
-
-QPushButton#nav_btn:hover {{
-    background-color: {COLORS['border']};
-    color: {COLORS['text']};
-}}
-
-QPushButton#nav_btn:checked {{
-    background-color: #1c2e4a;
-    color: {COLORS['accent']};
-    border-left: 3px solid {COLORS['accent']};
-}}
-
-/* ── Topbar ── */
-QFrame#topbar {{
-    background-color: {COLORS['card']};
-    border-bottom: 1px solid {COLORS['border']};
-}}
-
-QLabel#page_title {{
-    font-size: 18px;
-    font-weight: 600;
-    color: {COLORS['text']};
-}}
-
-QLabel#user_info {{
-    color: {COLORS['subtext']};
-    font-size: 12px;
-}}
-
-/* ── Cards ── */
-QFrame#stat_card {{
-    background-color: {COLORS['card']};
-    border: 1px solid {COLORS['border']};
-    border-radius: 10px;
-    padding: 8px;
-}}
-
-QLabel#stat_value {{
-    font-size: 28px;
-    font-weight: 700;
-    color: {COLORS['accent']};
-}}
-
-QLabel#stat_label {{
-    font-size: 11px;
-    color: {COLORS['subtext']};
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-}}
-
-/* ── Tabla ── */
-QTableWidget {{
-    background-color: {COLORS['card']};
-    border: 1px solid {COLORS['border']};
-    border-radius: 8px;
-    gridline-color: {COLORS['border']};
-    selection-background-color: {COLORS['selected']};
-}}
-
-QTableWidget::item {{
-    padding: 8px 12px;
-    border-bottom: 1px solid {COLORS['border']};
-}}
-
-QTableWidget::item:selected {{
-    background-color: {COLORS['selected']};
-    color: {COLORS['text']};
-}}
-
-QHeaderView::section {{
-    background-color: {COLORS['sidebar']};
-    color: {COLORS['subtext']};
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.8px;
-    padding: 10px 12px;
-    border: none;
-    border-bottom: 1px solid {COLORS['border']};
-    text-transform: uppercase;
-}}
-
-/* ── Botones ── */
-QPushButton#btn_primary {{
-    background-color: {COLORS['accent']};
-    color: white;
-    border: none;
-    border-radius: 7px;
-    padding: 9px 18px;
-    font-weight: 600;
-}}
-
-QPushButton#btn_primary:hover {{
-    background-color: {COLORS['accent_hover']};
-}}
-
-QPushButton#btn_danger {{
-    background-color: transparent;
-    color: {COLORS['danger']};
-    border: 1px solid {COLORS['danger']};
-    border-radius: 7px;
-    padding: 6px 14px;
-    font-weight: 500;
-    font-size: 12px;
-}}
-
-QPushButton#btn_danger:hover {{
-    background-color: {COLORS['danger']};
-    color: white;
-}}
-
-QPushButton#btn_logout {{
-    background: transparent;
-    color: {COLORS['danger']};
-    border: none;
-    font-size: 12px;
-    text-align: left;
-    padding: 10px 20px;
-}}
-
-QPushButton#btn_logout:hover {{
-    color: white;
-    background-color: {COLORS['danger']};
-}}
-
-/* ── Scroll ── */
-QScrollBar:vertical {{
-    background: {COLORS['bg']};
-    width: 6px;
-}}
-
-QScrollBar::handle:vertical {{
-    background: {COLORS['border']};
-    border-radius: 3px;
-}}
-"""
+from ca_program.views.admin_dashboard_widget import AdminDashboardWidget
+from ca_program.views.course_manager_gui import CourseManagerWidget
+from ca_program.views.professor_manager_gui import ProfessorManagerWidget
+from ca_program.views.student_manager_gui import StudentManagerWidget
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Panel de administración
-# ──────────────────────────────────────────────────────────────────────────────
-
-class AdminGUI(QWidget):
-    """Panel de control para usuarios administrativos."""
-
-    def __init__(self, auth_service: AuthService = None):
+class AdminGUI(QMainWindow):
+    def __init__(self, user=None):
         super().__init__()
+        self.user = user
+        self.nav_buttons: dict[str, QPushButton] = {}
+        self.views: dict[str, QWidget] = {}
 
-        self._auth = auth_service or AuthService()
-        self._user_model = UserModel()
-        self._current_user = self._auth.get_current_user()
+        self.setWindowTitle("Cambridge Academy | Administración")
+        self.setMinimumSize(1280, 760)
+        self.setStyleSheet(self.get_styles())
 
-        self.setWindowTitle("Panel de Administración")
-        self.resize(1000, 660)
-        self.setStyleSheet(STYLESHEET)
-        self._center_window()
         self._build_ui()
-        self._load_users()
-
-    def _center_window(self):
-        screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
-        self.move(x, y)
-
-    # ── UI ───────────────────────────────────────────────────────────────────
+        self.change_view("dashboard")
 
     def _build_ui(self):
-        root = QHBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        central = QWidget()
+        central.setObjectName("root")
+        self.setCentralWidget(central)
 
-        root.addWidget(self._build_sidebar())
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Área principal
-        main_area = QVBoxLayout()
-        main_area.setContentsMargins(0, 0, 0, 0)
-        main_area.setSpacing(0)
-        main_area.addWidget(self._build_topbar())
-        main_area.addLayout(self._build_content())
+        self.sidebar = self._create_sidebar()
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("contentStack")
+        self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        main_widget = QWidget()
-        main_widget.setLayout(main_area)
-        root.addWidget(main_widget)
+        self.views = {
+            "dashboard": AdminDashboardWidget(navigate=self.change_view),
+            "students": StudentManagerWidget(),
+            "courses": CourseManagerWidget(),
+            "professors": ProfessorManagerWidget(),
+        }
 
-    # ── Sidebar ──────────────────────────────────────────────────────────────
+        for view in self.views.values():
+            self.stack.addWidget(view)
 
-    def _build_sidebar(self) -> QFrame:
+        main_layout.addWidget(self.sidebar)
+        main_layout.addWidget(self.stack, 1)
+
+        self.statusBar().showMessage("Panel administrativo listo")
+
+    def _create_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(210)
+        sidebar.setFixedWidth(260)
 
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setContentsMargins(18, 22, 18, 22)
+        layout.setSpacing(10)
 
-        # Logo / nombre
-        layout.addSpacing(24)
-        app_name = QLabel("CA PROGRAM")
-        app_name.setObjectName("app_name")
-        layout.addWidget(app_name)
+        brand = QLabel("CA")
+        brand.setObjectName("brandBadge")
+        brand.setAlignment(Qt.AlignCenter)
 
-        version = QLabel("Sistema académico v1.0")
-        version.setObjectName("app_version")
-        layout.addWidget(version)
-        layout.addSpacing(28)
+        title = QLabel("Administración")
+        title.setObjectName("sidebarTitle")
+        title.setAlignment(Qt.AlignCenter)
 
-        # Separador
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet(f"color: {COLORS['border']};")
-        layout.addWidget(sep)
-        layout.addSpacing(12)
+        user_name = getattr(self.user, "name", "Administrador")
+        subtitle = QLabel(user_name)
+        subtitle.setObjectName("sidebarSubtitle")
+        subtitle.setAlignment(Qt.AlignCenter)
 
-        # Navegación
-        nav_label = QLabel("MENÚ")
-        nav_label.setStyleSheet(
-            f"color:{COLORS['subtext']}; font-size:10px;"
-            f"font-weight:600; letter-spacing:1px; padding:0 20px;"
-        )
-        layout.addWidget(nav_label)
-        layout.addSpacing(6)
+        layout.addWidget(brand, alignment=Qt.AlignCenter)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addSpacing(18)
 
-        self.btn_users = QPushButton("👥  Usuarios")
-        self.btn_users.setObjectName("nav_btn")
-        self.btn_users.setCheckable(True)
-        self.btn_users.setChecked(True)
-        self.btn_users.clicked.connect(lambda: self._switch_page(0))
-        layout.addWidget(self.btn_users)
+        self._add_nav_button(layout, "dashboard", "Inicio")
+        self._add_nav_button(layout, "students", "Estudiantes")
+        self._add_nav_button(layout, "courses", "Cursos")
+        self._add_nav_button(layout, "professors", "Profesores")
 
         layout.addStretch()
 
-        # Logout
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
-        sep2.setStyleSheet(f"color: {COLORS['border']};")
-        layout.addWidget(sep2)
-
-        btn_logout = QPushButton("⇤  Cerrar sesión")
-        btn_logout.setObjectName("btn_logout")
-        btn_logout.clicked.connect(self._logout)
-        layout.addWidget(btn_logout)
-        layout.addSpacing(10)
+        logout_btn = QPushButton("Cerrar sesión")
+        logout_btn.setObjectName("logoutButton")
+        logout_btn.clicked.connect(self.logout)
+        layout.addWidget(logout_btn)
 
         return sidebar
 
-    # ── Topbar ───────────────────────────────────────────────────────────────
+    def _add_nav_button(self, layout: QVBoxLayout, key: str, text: str):
+        button = QPushButton(text)
+        button.setCheckable(True)
+        button.setObjectName("navButton")
+        button.clicked.connect(lambda checked=False, view_key=key: self.change_view(view_key))
+        self.nav_buttons[key] = button
+        layout.addWidget(button)
 
-    def _build_topbar(self) -> QFrame:
-        topbar = QFrame()
-        topbar.setObjectName("topbar")
-        topbar.setFixedHeight(60)
+    def change_view(self, view_name: str):
+        view = self.views.get(view_name)
+        if view is None:
+            return
 
-        layout = QHBoxLayout(topbar)
-        layout.setContentsMargins(28, 0, 28, 0)
+        self.stack.setCurrentWidget(view)
+        for key, button in self.nav_buttons.items():
+            button.setChecked(key == view_name)
 
-        self.lbl_page_title = QLabel("Gestión de Usuarios")
-        self.lbl_page_title.setObjectName("page_title")
-        layout.addWidget(self.lbl_page_title)
+        labels = {
+            "dashboard": "Inicio",
+            "students": "Gestión de estudiantes",
+            "courses": "Gestión de cursos",
+            "professors": "Gestión de profesores",
+        }
+        self.statusBar().showMessage(labels.get(view_name, "Panel administrativo"))
 
-        layout.addStretch()
-
-        username = self._current_user.name if self._current_user else "Administrador"
-        user_info = QLabel(f"🔒  {username}  ·  Administrador")
-        user_info.setObjectName("user_info")
-        layout.addWidget(user_info)
-
-        return topbar
-
-    # ── Contenido ────────────────────────────────────────────────────────────
-
-    def _build_content(self) -> QVBoxLayout:
-        layout = QVBoxLayout()
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(20)
-
-        # Stats cards
-        layout.addLayout(self._build_stats_row())
-
-        # Encabezado tabla
-        header_row = QHBoxLayout()
-        tbl_title = QLabel("Todos los usuarios")
-        tbl_title.setStyleSheet("font-size:15px; font-weight:600;")
-        header_row.addWidget(tbl_title)
-        header_row.addStretch()
-
-        btn_refresh = QPushButton("↺  Actualizar")
-        btn_refresh.setObjectName("btn_primary")
-        btn_refresh.clicked.connect(self._load_users)
-        header_row.addWidget(btn_refresh)
-        layout.addLayout(header_row)
-
-        # Tabla de usuarios
-        self.table = self._build_table()
-        layout.addWidget(self.table)
-
-        return layout
-
-    def _build_stats_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setSpacing(14)
-
-        self.card_total = self._stat_card("—", "Total usuarios")
-        self.card_admins = self._stat_card("—", "Administradores")
-        self.card_profs = self._stat_card("—", "Profesores")
-        self.card_students = self._stat_card("—", "Estudiantes")
-
-        for card in [self.card_total, self.card_admins, self.card_profs, self.card_students]:
-            row.addWidget(card)
-        return row
-
-    def _stat_card(self, value: str, label: str) -> QFrame:
-        card = QFrame()
-        card.setObjectName("stat_card")
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(4)
-
-        lbl_val = QLabel(value)
-        lbl_val.setObjectName("stat_value")
-
-        lbl_name = QLabel(label)
-        lbl_name.setObjectName("stat_label")
-
-        layout.addWidget(lbl_val)
-        layout.addWidget(lbl_name)
-
-        # Guardamos referencia al valor
-        card._value_label = lbl_val
-        return card
-
-    def _build_table(self) -> QTableWidget:
-        table = QTableWidget()
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["ID", "NOMBRE", "ROL", "ESTADO", "ACCIÓN"])
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(False)
-        table.setShowGrid(False)
-        table.setFocusPolicy(Qt.NoFocus)
-        return table
-
-    # ── Datos ────────────────────────────────────────────────────────────────
-
-    def _load_users(self):
-        users = self._user_model.get_all_users()
-        self.table.setRowCount(0)
-
-        counts = {"admin": 0, "professor": 0, "student": 0}
-
-        for user in users:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-
-            role_display = {
-                "admin": "Administrador",
-                "professor": "Profesor",
-                "student": "Estudiante",
-            }.get(user.role, user.role)
-
-            role_color = {
-                "admin": "#4f8ef7",
-                "professor": "#7ecb7e",
-                "student": "#f0b84f",
-            }.get(user.role, COLORS["subtext"])
-
-            # Celdas
-            id_item = QTableWidgetItem(str(user.id_user))
-            id_item.setTextAlignment(Qt.AlignCenter)
-
-            name_item = QTableWidgetItem(user.name)
-            role_item = QTableWidgetItem(role_display)
-            role_item.setForeground(QColor(role_color))
-
-            status_item = QTableWidgetItem("Activo")
-            status_item.setForeground(QColor("#7ecb7e"))
-            status_item.setTextAlignment(Qt.AlignCenter)
-
-            self.table.setItem(row, 0, id_item)
-            self.table.setItem(row, 1, name_item)
-            self.table.setItem(row, 2, role_item)
-            self.table.setItem(row, 3, status_item)
-
-            # Botón eliminar
-            btn = QPushButton("Eliminar")
-            btn.setObjectName("btn_danger")
-            btn.setFixedHeight(30)
-            btn.clicked.connect(lambda checked, u=user: self._confirm_delete(u))
-
-            btn_container = QWidget()
-            btn_layout = QHBoxLayout(btn_container)
-            btn_layout.setContentsMargins(8, 4, 8, 4)
-            btn_layout.addWidget(btn)
-            self.table.setCellWidget(row, 4, btn_container)
-            self.table.setRowHeight(row, 46)
-
-            if user.role in counts:
-                counts[user.role] += 1
-
-        # Actualizar tarjetas de estadísticas
-        self.card_total._value_label.setText(str(len(users)))
-        self.card_admins._value_label.setText(str(counts["admin"]))
-        self.card_profs._value_label.setText(str(counts["professor"]))
-        self.card_students._value_label.setText(str(counts["student"]))
-
-    # ── Acciones ─────────────────────────────────────────────────────────────
-
-    def _confirm_delete(self, user: User):
-        reply = QMessageBox.question(
-            self,
-            "Confirmar eliminación",
-            f"¿Estás seguro de que deseas eliminar al usuario '{user.name}'?\n"
-            "Esta acción no se puede deshacer.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply == QMessageBox.Yes:
-            from ca_program.models.user_model import UserModel
-            model = UserModel()
-            success = model.delete_user(user.id_user)
-            if success:
-                self._load_users()
-            else:
-                QMessageBox.warning(self, "Error", "No se pudo eliminar el usuario.")
-
-    def _switch_page(self, index: int):
-        pass  # Expandible para futuras páginas del panel
-
-    def _logout(self):
-        self._auth.logout()
-        self.close()
+    def logout(self):
         from ca_program.views.login_gui import LoginGUI
-        self._login_window = LoginGUI(self._auth)
-        self._login_window.show()
 
+        self.login_window = LoginGUI()
+        self.login_window.show()
+        self.close()
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Entry point independiente
-# ──────────────────────────────────────────────────────────────────────────────
+    def get_styles(self) -> str:
+        return """
+        QMainWindow, QWidget#root {
+            background-color: #eaf0f8;
+            color: #1e293b;
+            font-size: 14px;
+        }
 
-def run():
-    app = QApplication(sys.argv)
-    window = AdminGUI()
-    window.show()
-    sys.exit(app.exec())
+        QFrame#sidebar {
+            background-color: #1e3a8a;
+            border: none;
+        }
 
+        QLabel#brandBadge {
+            background-color: #16a34a;
+            color: white;
+            border-radius: 28px;
+            min-width: 56px;
+            min-height: 56px;
+            max-width: 56px;
+            max-height: 56px;
+            font-size: 22px;
+            font-weight: 800;
+        }
 
-if __name__ == "__main__":
-    run()
+        QLabel#sidebarTitle {
+            color: white;
+            font-size: 20px;
+            font-weight: 700;
+            padding-top: 8px;
+        }
+
+        QLabel#sidebarSubtitle {
+            color: #c7d2fe;
+            font-size: 13px;
+            padding-bottom: 8px;
+        }
+
+        QPushButton#navButton {
+            background-color: transparent;
+            color: #dbeafe;
+            text-align: left;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-weight: 600;
+        }
+
+        QPushButton#navButton:hover {
+            background-color: rgba(255, 255, 255, 0.12);
+            color: white;
+        }
+
+        QPushButton#navButton:checked {
+            background-color: #2563eb;
+            color: white;
+        }
+
+        QPushButton#logoutButton {
+            background-color: #16a34a;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-weight: 700;
+        }
+
+        QPushButton#logoutButton:hover {
+            background-color: #15803d;
+        }
+
+        QLabel#pageTitle {
+            color: #1e3a8a;
+            font-size: 28px;
+            font-weight: 800;
+        }
+
+        QLabel#pageSubtitle {
+            color: #475569;
+            font-size: 14px;
+        }
+
+        QFrame#card {
+            background-color: white;
+            border: 1px solid #dbe4f0;
+            border-radius: 16px;
+        }
+
+        QLabel#cardTitle {
+            color: #0f172a;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        QLabel#cardText {
+            color: #475569;
+            line-height: 1.4;
+        }
+
+        QLabel#tagLabel {
+            background-color: #dcfce7;
+            color: #166534;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+
+        QLabel#fieldLabel {
+            color: #334155;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        QLabel#serviceStatus[state="ok"] {
+            color: #166534;
+            background-color: #dcfce7;
+            border: 1px solid #bbf7d0;
+            border-radius: 10px;
+            padding: 8px 12px;
+        }
+
+        QLabel#serviceStatus[state="warning"] {
+            color: #854d0e;
+            background-color: #fef3c7;
+            border: 1px solid #fde68a;
+            border-radius: 10px;
+            padding: 8px 12px;
+        }
+
+        QLabel#selectionStatus, QLabel#tableHint {
+            color: #475569;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+
+        QScrollArea#formScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+
+        QWidget#formScrollContent {
+            background-color: transparent;
+        }
+
+        QLineEdit, QTextEdit, QDateEdit, QSpinBox, QDoubleSpinBox {
+            background-color: white;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 14px;
+            selection-background-color: #2563eb;
+        }
+
+        QLineEdit:focus, QTextEdit:focus, QDateEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+            border: 1px solid #2563eb;
+        }
+
+        QPushButton {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 700;
+        }
+
+        QPushButton:hover {
+            background-color: #1d4ed8;
+        }
+
+        QPushButton:pressed {
+            background-color: #1e40af;
+        }
+
+        QPushButton#secondaryButton {
+            background-color: #eff6ff;
+            color: #1e3a8a;
+            border: 1px solid #bfdbfe;
+        }
+
+        QPushButton#secondaryButton:hover {
+            background-color: #dbeafe;
+        }
+
+        QTableWidget {
+            background-color: white;
+            alternate-background-color: #f8fafc;
+            gridline-color: #e2e8f0;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            selection-background-color: #dbeafe;
+            selection-color: #0f172a;
+            color: #0f172a;
+            font-size: 13px;
+        }
+
+        QHeaderView::section {
+            background-color: #1e3a8a;
+            color: white;
+            border: none;
+            padding: 7px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        QScrollBar:vertical, QScrollBar:horizontal {
+            background-color: #f1f5f9;
+            border: none;
+            margin: 0px;
+        }
+
+        QScrollBar:vertical {
+            width: 10px;
+        }
+
+        QScrollBar:horizontal {
+            height: 10px;
+        }
+
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+            background-color: #94a3b8;
+            border-radius: 5px;
+            min-height: 28px;
+            min-width: 28px;
+        }
+
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+            background-color: #64748b;
+        }
+
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+            height: 0px;
+        }
+
+        QStatusBar {
+            background-color: #f8fafc;
+            color: #475569;
+        }
+        """

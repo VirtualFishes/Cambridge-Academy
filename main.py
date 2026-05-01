@@ -5,8 +5,6 @@ Ejecutar con: python main.py
 
 import sys
 from PySide6.QtWidgets import QApplication
-
-from ca_program.services.auth_service import AuthService
 from ca_program.views.login_gui import LoginGUI
 
 
@@ -14,9 +12,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("CA Program")
 
-    auth_service = AuthService()
-
-    window = LoginGUI(auth_service)
+    window = LoginGUI()
     window.show()
 
     sys.exit(app.exec())
