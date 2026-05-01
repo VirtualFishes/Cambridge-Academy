@@ -21,6 +21,9 @@ Carpeta `docs`
 Archivo `setup.py`
 > Configura el entorno virtual e instala las dependencias.
 
+Archivo `.env`
+> Archivo local de configuración para la conexión con la base de datos. No debe versionarse.
+
 ---
 
 ## Requisitos
@@ -29,6 +32,7 @@ Archivo `setup.py`
 - PostgreSQL instalado y en ejecución.
 - Sistema operativo Windows, Linux o macOS.
 - Conexión a una base de datos PostgreSQL configurada.
+- Archivo `.env` configurado en la raíz del proyecto.
 
 ## Dependencias principales
 
@@ -39,45 +43,62 @@ Antes de iniciar el programa, se debe ejecutar `setup.py` para la instalación a
 
 ---
 
+## Configuración del archivo .env
+
+Desde esta versión, la conexión con la base de datos se configura mediante variables de entorno.
+
+Crear un archivo `.env` en la raíz del proyecto con la siguiente estructura:
+
+DB_HOST=host
+DB_PORT=5432
+DB_NAME=nombre_base_datos
+DB_USER=usuario_postgres
+DB_PASSWORD=contraseña_postgres
+
+El archivo `.env` contiene información sensible y no debe subirse al repositorio.
+
+---
+
 ## Detalles de desarrollo
 
-Version 0.3.0 - Funciones del módulo estudiante, inscripción, pagos y seguridad de cuenta.
+Version 0.4.0 - Funciones del módulo profesor y control académico de notas.
 
-Esta versión introduce las funcionalidades principales del usuario estudiante y amplía el sistema con procesos de inscripción, generación de recibos, pagos simulados, consulta financiera y cambio de contraseña.
+Esta versión integra el rol profesor y completa el flujo académico relacionado con la gestión de calificaciones. También permite que estudiantes y administradores consulten registros académicos desde sus respectivos perfiles.
 
 Funciones integradas:
 
-1. El usuario estudiante puede visualizar los cursos disponibles.
-2. El usuario estudiante puede visualizar los cursos en los que está inscrito.
-3. El usuario estudiante puede consultar información detallada de los cursos.
-4. El usuario estudiante puede solicitar inscripción a un curso disponible.
-5. El sistema genera un recibo pendiente asociado a la inscripción.
-6. El usuario estudiante puede pagar un recibo pendiente para confirmar la inscripción.
-7. El usuario estudiante puede consultar su historial de pagos.
-8. El usuario administrador puede consultar los pagos realizados por estudiantes.
-9. El usuario autenticado puede cambiar su contraseña.
+1. El usuario profesor puede consultar los cursos que tiene asignados.
+2. El usuario profesor puede consultar el detalle de sus cursos asignados.
+3. El usuario profesor puede registrar notas de estudiantes inscritos.
+4. El usuario profesor puede consultar el registro de notas de sus cursos.
+5. El usuario profesor puede modificar notas previamente registradas.
+6. El usuario estudiante puede consultar su registro de notas.
+7. El usuario administrador puede consultar el registro de notas por estudiante.
+8. El sistema valida el rango de notas académicas entre 0.0 y 5.0.
+9. El sistema calcula el promedio y el estado académico del estudiante.
 
 Historias de usuario implementadas:
 
-- HU-18: Visualizar cursos disponibles.
-- HU-19: Visualizar cursos inscritos.
-- HU-20: Consultar datos de los cursos.
-- HU-21: Inscribirme en un curso disponible.
-- HU-22: Consultar historial de pagos.
-- HU-16: Consultar pagos de estudiantes.
-- HU-30: Cambiar contraseña.
+- HU-24: Consultar cursos asignados.
+- HU-25: Consultar datos de cursos asignados.
+- HU-26: Registrar notas de cada estudiante.
+- HU-27: Consultar registro de notas.
+- HU-28: Modificar notas de estudiantes.
+- HU-23: Consultar registro de notas.
+- HU-17: Consultar registro de notas por estudiante.
 
 # Versiones posteriores de desarrollo:
 
 - 0.1.0 : Registro y consulta de estudiantes, cursos y profesores.
 - 0.2.0 : Modificación, eliminación y búsqueda de estudiantes, cursos y profesores.
-- 0.2.1 : Cursos disponibles
-- 0.2.2 : Cursos inscritos
-- 0.2.3 : Consultar cursos
-- 0.2.4 : Inscribir curso
-- 0.2.5 : Consultar pagos
-- 0.2.6 : Consultar pagos como administrador
-- 0.2.7 : Cambiar contraseña
+- 0.3.0 : Módulo estudiante, inscripción, pagos y cambio de contraseña.
+- 0.3.1 : Resumen cursos
+- 0.3.2 : Detalles cursos
+- 0.3.3 : Registrar notas
+- 0.3.4 : Consultar notas
+- 0.3.5 : Modificar notas
+- 0.3.6 : Consultar notas como estudiante
+- 0.3.7 : Consultar notas como administrador
 
 ---
 

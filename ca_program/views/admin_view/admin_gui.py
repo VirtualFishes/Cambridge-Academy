@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.views.admin_view.admin_dashboard_widget import AdminDashboardWidget
+from ca_program.views.admin_view.admin_grade_record_widget import AdminGradeRecordWidget
 from ca_program.views.admin_view.course_manager_gui import CourseManagerWidget
 from ca_program.views.admin_view.professor_manager_gui import ProfessorManagerWidget
 from ca_program.views.admin_view.student_manager_gui import StudentManagerWidget
@@ -56,6 +57,7 @@ class AdminGUI(QMainWindow):
             "courses": CourseManagerWidget(),
             "professors": ProfessorManagerWidget(),
             "payments": PaymentsGUI(),
+            "academic_record": AdminGradeRecordWidget(user=self.user),
         }
 
         for view in self.views.values():
@@ -98,9 +100,11 @@ class AdminGUI(QMainWindow):
         self._add_nav_button(layout, "courses", "Cursos")
         self._add_nav_button(layout, "professors", "Profesores")
         self._add_nav_button(layout, "payments", "Pagos")
-        self._add_action_button(layout, "Cambiar contraseña", self.open_change_password_dialog)
+        self._add_nav_button(layout, "academic_record", "Registro académico")
 
         layout.addStretch()
+
+        self._add_action_button(layout, "Cambiar contraseña", self.open_change_password_dialog)
 
         logout_btn = QPushButton("Cerrar sesión")
         logout_btn.setObjectName("logoutButton")
@@ -119,7 +123,8 @@ class AdminGUI(QMainWindow):
 
     def _add_action_button(self, layout: QVBoxLayout, text: str, callback):
         button = QPushButton(text)
-        button.setObjectName("navButton")
+        button.setObjectName("securityButton")
+        button.setCursor(Qt.PointingHandCursor)
         button.clicked.connect(callback)
         layout.addWidget(button)
 
@@ -138,6 +143,7 @@ class AdminGUI(QMainWindow):
             "courses": "Gestión de cursos",
             "professors": "Gestión de profesores",
             "payments": "Consulta de pagos",
+            "academic_record": "Registro académico por estudiante",
         }
         self.statusBar().showMessage(labels.get(view_name, "Panel administrativo"))
 
@@ -242,6 +248,22 @@ class AdminGUI(QMainWindow):
         QPushButton#navButton:checked {
             background-color: #2563eb;
             color: white;
+        }
+
+        QPushButton#securityButton {
+            background-color: rgba(255, 255, 255, 0.10);
+            color: #dbeafe;
+            text-align: left;
+            border: 1px solid rgba(191, 219, 254, 0.35);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-weight: 700;
+        }
+
+        QPushButton#securityButton:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.55);
         }
 
         QPushButton#logoutButton {

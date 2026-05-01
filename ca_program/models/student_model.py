@@ -107,6 +107,72 @@ class StudentModel:
             connection.close()
 
     @staticmethod
+    def get_student_by_user_id(id_user: int) -> Student | None:
+        """
+        Obtiene el perfil de estudiante asociado a un usuario autenticado.
+
+        Este método permite transformar el User recibido desde el login en su
+        entidad Student correspondiente. Será usado por los servicios que
+        necesiten consultar información académica propia del estudiante, como
+        el registro de notas de la HU-23.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return StudentModel._get_student_by_user_id_with_cursor(
+                cursor=cursor,
+                id_user=id_user,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    get_by_user_id = get_student_by_user_id
+    find_by_user_id = get_student_by_user_id
+
+    @staticmethod
+    def get_student_by_id_with_cursor(cursor, id_student: str) -> Student | None:
+        """
+        Obtiene un estudiante usando un cursor externo.
+
+        Este método permite que servicios con una transacción abierta puedan
+        validar la existencia del estudiante sin crear una nueva conexión.
+        """
+        return StudentModel._get_student_by_id_with_cursor(
+            cursor=cursor,
+            id_student=id_student,
+        )
+
+    @staticmethod
+    def search_students(search_text: str | None = None) -> list[Student]:
+        """
+        Busca estudiantes para procesos administrativos.
+
+        Si no se proporciona texto, retorna todos los estudiantes ordenados por
+        nombre. La búsqueda considera identificación, nombre y correo, que son
+        los criterios necesarios para que administración seleccione un estudiante
+        y consulte su registro académico en la HU-17.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return StudentModel._search_students_with_cursor(
+                cursor=cursor,
+                search_text=search_text,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    search_students_for_admin = search_students
+    get_students_for_admin_selection = search_students
+    find_students = search_students
+
+    @staticmethod
     def update_student(
         current_id_student: str,
         id_student: str,
@@ -392,6 +458,73 @@ class StudentModel:
             return StudentModel._map_to_entity(result)
 
         return None
+
+    @staticmethod
+    def _get_student_by_user_id_with_cursor(cursor, id_user: int) -> Student | None:
+        query = """
+            SELECT
+                s.id_student,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality
+            FROM students s
+            INNER JOIN users u ON s.id_user = u.id_user
+            WHERE s.id_user = %s
+              AND u.role = %s
+            LIMIT 1;
+        """
+        cursor.execute(query, (id_user, UserRole.STUDENT.value))
+        result = cursor.fetchone()
+
+        if result:
+            return StudentModel._map_to_entity(result)
+
+        return None
+
+    @staticmethod
+    def _search_students_with_cursor(cursor, search_text: str | None = None) -> list[Student]:
+        clean_search = "" if search_text is None else str(search_text).strip()
+
+        base_query = """
+            SELECT
+                s.id_student,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality
+            FROM students s
+            INNER JOIN users u ON s.id_user = u.id_user
+            WHERE u.role = %s
+        """
+
+        params = [UserRole.STUDENT.value]
+
+        if clean_search:
+            base_query += """
+              AND (
+                    CAST(s.id_student AS TEXT) ILIKE %s
+                 OR u.name ILIKE %s
+                 OR u.email ILIKE %s
+              )
+            """
+            pattern = f"%{clean_search}%"
+            params.extend([pattern, pattern, pattern])
+
+        base_query += """
+            ORDER BY u.name ASC, s.id_student ASC;
+        """
+
+        cursor.execute(base_query, tuple(params))
+        results = cursor.fetchall()
+
+        return [StudentModel._map_to_entity(row) for row in results]
 
     @staticmethod
     def _student_id_exists_with_cursor(cursor, id_student: str) -> bool:

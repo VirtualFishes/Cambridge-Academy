@@ -155,6 +155,93 @@ class EnrollmentModel:
             cursor.close()
             connection.close()
 
+
+    @staticmethod
+    def get_confirmed_enrollments_by_course_and_professor_id(
+        code_course: int | str,
+        id_professor: int | str,
+    ) -> list[Enrollment]:
+        """
+        Consulta las matrículas confirmadas de un curso asignado a un profesor.
+
+        Este método sirve como base para HU-26: registrar notas únicamente a
+        estudiantes que pertenecen al curso del profesor autenticado y cuya
+        inscripción ya fue confirmada mediante recibo pagado.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return EnrollmentModel.get_confirmed_enrollments_by_course_and_professor_id_with_cursor(
+                cursor=cursor,
+                code_course=code_course,
+                id_professor=id_professor,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    @staticmethod
+    def get_confirmed_enrollments_by_course_and_professor_id_with_cursor(
+        cursor,
+        code_course: int | str,
+        id_professor: int | str,
+    ) -> list[Enrollment]:
+        """
+        Consulta matrículas confirmadas usando un cursor externo.
+
+        El filtro por profesor evita exponer estudiantes de cursos que no
+        pertenecen al docente autenticado. El filtro por recibo pagado conserva
+        la regla de negocio de inscripción confirmada.
+        """
+        query = f"""
+            {EnrollmentModel._base_enrollment_select_from(confirmed_only=True)}
+            WHERE c.code_course = %s
+              AND c.id_professor = %s
+            {EnrollmentModel._base_enrollment_group_by()}
+            ORDER BY student_user.name ASC, s.id_student ASC, e.id_enrollment ASC;
+        """
+        cursor.execute(query, (code_course, id_professor))
+        results = cursor.fetchall()
+
+        return [EnrollmentModel._map_enrollment_to_entity(row) for row in results]
+
+    @staticmethod
+    def get_confirmed_enrollment_by_id_course_and_professor_id(
+        cursor,
+        id_enrollment: int | str,
+        code_course: int | str,
+        id_professor: int | str,
+    ) -> Enrollment | None:
+        """
+        Consulta una matrícula confirmada específica de un curso del profesor.
+
+        Este método permite que la capa de servicio valide, antes de registrar
+        notas, que la matrícula enviada desde la GUI realmente pertenece al
+        curso seleccionado y al profesor autenticado.
+        """
+        query = f"""
+            {EnrollmentModel._base_enrollment_select_from(confirmed_only=True)}
+            WHERE e.id_enrollment = %s
+              AND c.code_course = %s
+              AND c.id_professor = %s
+            {EnrollmentModel._base_enrollment_group_by()}
+            LIMIT 1;
+        """
+        cursor.execute(query, (id_enrollment, code_course, id_professor))
+        result = cursor.fetchone()
+
+        if result:
+            return EnrollmentModel._map_enrollment_to_entity(result)
+
+        return None
+
+    get_confirmed_enrollments_for_grading = get_confirmed_enrollments_by_course_and_professor_id
+    get_gradable_enrollments_by_course_and_professor_id = get_confirmed_enrollments_by_course_and_professor_id
+    get_confirmed_enrollment_for_grading = get_confirmed_enrollment_by_id_course_and_professor_id
+    get_gradable_enrollment_by_id = get_confirmed_enrollment_by_id_course_and_professor_id
+
     @staticmethod
     def get_enrolled_courses_by_student_user_id(id_user: int | str) -> list[Course]:
         """

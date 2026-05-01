@@ -25,6 +25,7 @@ try:
     from .enrolled_courses_widget import EnrolledCoursesWidget
     from .payment_dialog import PaymentDialog
     from .payments_record import PaymentsRecordWidget
+    from .student_grade_record_widget import StudentGradeRecordWidget
 except ImportError:
     # Compatibilidad temporal con la estructura anterior:
     # ca_program/views/*.py
@@ -33,6 +34,7 @@ except ImportError:
     from ca_program.views.student_view.enrolled_courses_widget import EnrolledCoursesWidget
     from ca_program.views.student_view.payment_dialog import PaymentDialog
     from ca_program.views.student_view.payments_record import PaymentsRecordWidget
+    from ca_program.views.student_view.student_grade_record_widget import StudentGradeRecordWidget
 
 
 class StudentGUI(QMainWindow):
@@ -41,6 +43,7 @@ class StudentGUI(QMainWindow):
     AVAILABLE_COURSES_VIEW = "available_courses"
     ENROLLED_COURSES_VIEW = "enrolled_courses"
     PAYMENTS_RECORD_VIEW = "payments_record"
+    GRADE_RECORD_VIEW = "grade_record"
     COURSE_DETAIL_VIEW = "course_detail"
 
     def __init__(self, user=None):
@@ -75,6 +78,7 @@ class StudentGUI(QMainWindow):
         self.available_courses_view = AvailableCoursesWidget(self.user)
         self.enrolled_courses_view = EnrolledCoursesWidget(self.user)
         self.payments_record_view = PaymentsRecordWidget(self.user)
+        self.grade_record_view = StudentGradeRecordWidget(self.user)
         self.course_detail_view = CourseDetailWidget(on_back=self.return_to_previous_view)
 
         self._configure_course_consult_action(
@@ -95,6 +99,7 @@ class StudentGUI(QMainWindow):
             self.AVAILABLE_COURSES_VIEW: self.available_courses_view,
             self.ENROLLED_COURSES_VIEW: self.enrolled_courses_view,
             self.PAYMENTS_RECORD_VIEW: self.payments_record_view,
+            self.GRADE_RECORD_VIEW: self.grade_record_view,
             self.COURSE_DETAIL_VIEW: self.course_detail_view,
         }
 
@@ -136,9 +141,11 @@ class StudentGUI(QMainWindow):
         self._add_nav_button(layout, self.AVAILABLE_COURSES_VIEW, "Cursos disponibles")
         self._add_nav_button(layout, self.ENROLLED_COURSES_VIEW, "Mis cursos")
         self._add_nav_button(layout, self.PAYMENTS_RECORD_VIEW, "Historial de pagos")
-        self._add_action_button(layout, "Cambiar contraseña", self.open_change_password_dialog)
+        self._add_nav_button(layout, self.GRADE_RECORD_VIEW, "Mis notas")
 
         layout.addStretch()
+
+        self._add_action_button(layout, "Cambiar contraseña", self.open_change_password_dialog)
 
         logout_btn = QPushButton("Cerrar sesión")
         logout_btn.setObjectName("studentLogoutButton")
@@ -159,7 +166,7 @@ class StudentGUI(QMainWindow):
 
     def _add_action_button(self, layout: QVBoxLayout, text: str, callback):
         button = QPushButton(text)
-        button.setObjectName("studentNavButton")
+        button.setObjectName("studentSecurityButton")
         button.setCursor(Qt.PointingHandCursor)
         button.clicked.connect(callback)
         layout.addWidget(button)
@@ -213,6 +220,9 @@ class StudentGUI(QMainWindow):
         if view_name == self.PAYMENTS_RECORD_VIEW and hasattr(self.payments_record_view, "load_payments"):
             self.payments_record_view.load_payments()
 
+        if view_name == self.GRADE_RECORD_VIEW and hasattr(self.grade_record_view, "load_records"):
+            self.grade_record_view.load_records()
+
         if view_name != self.COURSE_DETAIL_VIEW:
             self.current_view_name = view_name
 
@@ -223,6 +233,7 @@ class StudentGUI(QMainWindow):
             self.AVAILABLE_COURSES_VIEW: "Cursos disponibles",
             self.ENROLLED_COURSES_VIEW: "Mis cursos",
             self.PAYMENTS_RECORD_VIEW: "Historial de pagos",
+            self.GRADE_RECORD_VIEW: "Mis notas",
             self.COURSE_DETAIL_VIEW: "Detalle del curso",
         }
         self.statusBar().showMessage(labels.get(view_name, "Panel de estudiante"))
@@ -440,6 +451,9 @@ class StudentGUI(QMainWindow):
         if hasattr(self.payments_record_view, "load_payments"):
             self.payments_record_view.load_payments()
 
+        if hasattr(self.grade_record_view, "load_records"):
+            self.grade_record_view.load_records(show_error=False)
+
     def _refresh_detail_if_visible(self, course: dict):
         if getattr(self, "stack", None) and self.stack.currentWidget() == self.course_detail_view:
             self.course_detail_view.set_course(course)
@@ -655,6 +669,22 @@ class StudentGUI(QMainWindow):
             color: white;
         }
 
+        QPushButton#studentSecurityButton {
+            background-color: rgba(255, 255, 255, 0.10);
+            color: #dbeafe;
+            text-align: left;
+            border: 1px solid rgba(191, 219, 254, 0.35);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-weight: 700;
+        }
+
+        QPushButton#studentSecurityButton:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.55);
+        }
+
         QPushButton#studentLogoutButton {
             background-color: #16a34a;
             color: white;
@@ -861,6 +891,36 @@ class StudentGUI(QMainWindow):
             font-weight: 600;
         }
 
+
+        QScrollBar:vertical, QScrollBar:horizontal {
+            background-color: #f1f5f9;
+            border: none;
+            margin: 0px;
+        }
+
+        QScrollBar:vertical {
+            width: 10px;
+        }
+
+        QScrollBar:horizontal {
+            height: 10px;
+        }
+
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+            background-color: #94a3b8;
+            border-radius: 5px;
+            min-height: 28px;
+            min-width: 28px;
+        }
+
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+            background-color: #64748b;
+        }
+
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+            height: 0px;
+        }
         QLabel#emptyState {
             background-color: white;
             color: #64748b;

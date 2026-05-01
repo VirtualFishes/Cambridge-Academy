@@ -2,6 +2,7 @@ import re
 from datetime import date, datetime
 
 from ca_program.models.professor_model import ProfessorModel
+from ca_program.models.course_model import CourseModel
 
 
 class ProfessorService:
@@ -201,6 +202,214 @@ class ProfessorService:
             return {
                 "success": False,
                 "message": "Ocurrió un error al consultar el profesor.",
+            }
+
+    @staticmethod
+    def get_professor_by_user_id(id_user: int | str) -> dict:
+        """
+        Consulta el perfil de profesor asociado a un usuario autenticado.
+
+        Este método conecta el usuario del login con el registro real de
+        professors, sin exponer consultas SQL en la interfaz gráfica.
+        """
+        try:
+            id_user = ProfessorService._extract_user_id(id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(id_user)
+
+            if not professor:
+                return {
+                    "success": False,
+                    "message": "No existe un perfil de profesor asociado a este usuario.",
+                    "professor": None,
+                    "data": None,
+                }
+
+            return {
+                "success": True,
+                "message": "Profesor encontrado.",
+                "professor": professor,
+                "professor_data": ProfessorService._professor_to_dict(professor),
+                "data": professor,
+            }
+
+        except ValueError as e:
+            return {
+                "success": False,
+                "message": str(e),
+                "professor": None,
+                "data": None,
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al consultar el perfil del profesor.",
+                "professor": None,
+                "data": None,
+            }
+
+    @staticmethod
+    def get_assigned_courses_by_user(user=None, id_user: int | str | None = None) -> dict:
+        """
+        Consulta los cursos asignados al profesor autenticado.
+
+        Flujo de HU-24:
+        User autenticado -> Professor asociado -> Cursos filtrados por id_professor.
+        La GUI de profesores debe consumir este método y no consultar modelos ni
+        base de datos directamente.
+        """
+        try:
+            if not ProfessorService._user_has_professor_role(user):
+                return {
+                    "success": False,
+                    "message": "El usuario autenticado no tiene permisos de profesor.",
+                    "professor": None,
+                    "professor_data": None,
+                    "courses": [],
+                    "entities": [],
+                    "data": [],
+                }
+
+            id_user = ProfessorService._extract_user_id(user=user, id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(id_user)
+
+            if not professor:
+                return {
+                    "success": False,
+                    "message": "No existe un perfil de profesor asociado a este usuario.",
+                    "professor": None,
+                    "professor_data": None,
+                    "courses": [],
+                    "entities": [],
+                    "data": [],
+                }
+
+            courses = CourseModel.get_courses_by_professor_id(professor.id_professor)
+            course_records = [ProfessorService._course_to_dict(course) for course in courses]
+
+            return {
+                "success": True,
+                "message": "Cursos asignados consultados correctamente.",
+                "professor": professor,
+                "professor_data": ProfessorService._professor_to_dict(professor),
+                "courses": course_records,
+                "entities": courses,
+                "data": course_records,
+            }
+
+        except ValueError as e:
+            return {
+                "success": False,
+                "message": str(e),
+                "professor": None,
+                "professor_data": None,
+                "courses": [],
+                "entities": [],
+                "data": [],
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al consultar los cursos asignados.",
+                "professor": None,
+                "professor_data": None,
+                "courses": [],
+                "entities": [],
+                "data": [],
+            }
+
+    @staticmethod
+    def get_assigned_course_detail_by_user(user=None, id_user: int | str | None = None, code_course: str | None = None) -> dict:
+        """
+        Consulta el detalle de un curso asignado al profesor autenticado.
+
+        Flujo de HU-25:
+        User autenticado -> Professor asociado -> Curso filtrado por code_course
+        e id_professor. La validación por profesor evita consultar cursos ajenos
+        aunque se conozca el código del curso.
+        """
+        try:
+            if not ProfessorService._user_has_professor_role(user):
+                return {
+                    "success": False,
+                    "message": "El usuario autenticado no tiene permisos de profesor.",
+                    "professor": None,
+                    "professor_data": None,
+                    "course": None,
+                    "entity": None,
+                    "data": None,
+                }
+
+            code_course = str(code_course or "").strip()
+            if not code_course:
+                raise ValueError("El código del curso es obligatorio para consultar el detalle.")
+
+            id_user = ProfessorService._extract_user_id(user=user, id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(id_user)
+
+            if not professor:
+                return {
+                    "success": False,
+                    "message": "No existe un perfil de profesor asociado a este usuario.",
+                    "professor": None,
+                    "professor_data": None,
+                    "course": None,
+                    "entity": None,
+                    "data": None,
+                }
+
+            course = CourseModel.get_course_by_code_and_professor_id(
+                code_course=code_course,
+                id_professor=professor.id_professor,
+            )
+
+            if not course:
+                return {
+                    "success": False,
+                    "message": "Curso no encontrado o no asignado al profesor autenticado.",
+                    "professor": professor,
+                    "professor_data": ProfessorService._professor_to_dict(professor),
+                    "course": None,
+                    "entity": None,
+                    "data": None,
+                }
+
+            course_record = ProfessorService._course_to_dict(course)
+
+            return {
+                "success": True,
+                "message": "Detalle del curso consultado correctamente.",
+                "professor": professor,
+                "professor_data": ProfessorService._professor_to_dict(professor),
+                "course": course_record,
+                "entity": course,
+                "data": course_record,
+            }
+
+        except ValueError as e:
+            return {
+                "success": False,
+                "message": str(e),
+                "professor": None,
+                "professor_data": None,
+                "course": None,
+                "entity": None,
+                "data": None,
+            }
+
+        except Exception as e:
+            print(e)
+            return {
+                "success": False,
+                "message": "Ocurrió un error al consultar el detalle del curso asignado.",
+                "professor": None,
+                "professor_data": None,
+                "course": None,
+                "entity": None,
+                "data": None,
             }
 
     @staticmethod
@@ -474,6 +683,81 @@ class ProfessorService:
 
         raise ValueError("La fecha de nacimiento debe tener formato YYYY-MM-DD.")
 
+    @staticmethod
+    def _extract_user_id(user=None, id_user: int | str | None = None) -> int:
+        if id_user in (None, ""):
+            if isinstance(user, dict):
+                id_user = ProfessorService._read_first(user, "id_user", "user_id")
+            elif hasattr(user, "id_user"):
+                id_user = getattr(user, "id_user")
+            else:
+                id_user = user
+
+        if id_user in (None, ""):
+            raise ValueError("El usuario autenticado es obligatorio.")
+
+        try:
+            return int(id_user)
+        except (TypeError, ValueError):
+            raise ValueError("El identificador del usuario autenticado no es válido.")
+
+    @staticmethod
+    def _user_has_professor_role(user) -> bool:
+        if user is None:
+            return True
+
+        role = user.get("role") if isinstance(user, dict) else getattr(user, "role", None)
+        if role is None:
+            return True
+
+        role_name = str(getattr(role, "name", "")).upper()
+        role_value = str(getattr(role, "value", role)).lower()
+
+        return role_name == "PROFESSOR" or role_value == "professor"
+
+    @staticmethod
+    def _professor_to_dict(professor) -> dict:
+        user = getattr(professor, "user", None)
+
+        return {
+            "id_professor": getattr(professor, "id_professor", ""),
+            "professional_title": getattr(professor, "professional_title", ""),
+            "id_user": getattr(user, "id_user", ""),
+            "name": getattr(user, "name", ""),
+            "email": getattr(user, "email", ""),
+            "birth_date": getattr(user, "birth_date", ""),
+            "nationality": getattr(user, "nationality", ""),
+        }
+
+    @staticmethod
+    def _course_to_dict(course) -> dict:
+        professor = getattr(course, "professor", None)
+        professor_user = getattr(professor, "user", None)
+
+        professor_data = {
+            "id_professor": getattr(professor, "id_professor", ""),
+            "name": getattr(professor_user, "name", ""),
+            "email": getattr(professor_user, "email", ""),
+            "professional_title": getattr(professor, "professional_title", ""),
+        }
+
+        return {
+            "code_course": getattr(course, "code_course", ""),
+            "name": getattr(course, "name", ""),
+            "description": getattr(course, "description", ""),
+            "price": getattr(course, "price", 0),
+            "duration_days": getattr(course, "duration_days", 0),
+            "intensity_hours": getattr(course, "intensity_hours", 0),
+            "schedule": getattr(course, "schedule", ""),
+            "location": getattr(course, "location", ""),
+            "start_date": getattr(course, "start_date", ""),
+            "end_date": getattr(course, "end_date", ""),
+            "id_professor": professor_data["id_professor"],
+            "professor": professor_data,
+            "students": getattr(course, "enrolled_students", 0),
+            "enrolled_students": getattr(course, "enrolled_students", 0),
+        }
+
     create_professor = register_professor
     add_professor = register_professor
     save_professor = register_professor
@@ -496,3 +780,18 @@ class ProfessorService:
 
     find_professors_by_name = search_professors_by_name
     search_by_name = search_professors_by_name
+
+    find_professor_by_user_id = get_professor_by_user_id
+    get_by_user_id = get_professor_by_user_id
+
+    get_assigned_course_detail_for_user = get_assigned_course_detail_by_user
+    get_course_detail_by_user = get_assigned_course_detail_by_user
+    get_my_course_detail = get_assigned_course_detail_by_user
+    consult_assigned_course_detail = get_assigned_course_detail_by_user
+    get_assigned_course_by_code_for_user = get_assigned_course_detail_by_user
+
+    get_assigned_courses_for_user = get_assigned_courses_by_user
+    get_courses_by_user = get_assigned_courses_by_user
+    get_my_courses = get_assigned_courses_by_user
+    consult_assigned_courses = get_assigned_courses_by_user
+    list_assigned_courses = get_assigned_courses_by_user

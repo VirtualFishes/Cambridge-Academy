@@ -61,6 +61,8 @@ class LoginGUI(QWidget):
             self.open_admin(user)
         elif user.role.name == "STUDENT":
             self.open_student(user)
+        elif user.role.name == "PROFESSOR":
+            self.open_professor(user)
         else:
             QMessageBox.information(
                 self,
@@ -72,14 +74,21 @@ class LoginGUI(QWidget):
         from ca_program.views.admin_view.admin_gui import AdminGUI
 
         self.admin_window = AdminGUI(user=user)
-        self.admin_window.show()
+        self.admin_window.showMaximized()
         self.close()
 
     def open_student(self, user=None):
         from ca_program.views.student_view.student_gui import StudentGUI
 
         self.student_window = StudentGUI(user=user)
-        self.student_window.show()
+        self.student_window.showMaximized()
+        self.close()
+
+    def open_professor(self, user=None):
+        from ca_program.views.professor_view.professor_gui import ProfessorGUI
+
+        self.professor_window = ProfessorGUI(user=user)
+        self.professor_window.showMaximized()
         self.close()
 
     def get_styles(self):

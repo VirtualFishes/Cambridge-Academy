@@ -311,11 +311,12 @@ class CourseModel:
                     u.email,
                     u.birth_date,
                     u.nationality,
-                    COUNT(e.id_enrollment) AS enrolled_students
+                    COUNT(DISTINCT CASE WHEN r.status = 'paid' THEN e.id_enrollment END) AS enrolled_students
                 FROM courses c
                 INNER JOIN professors p ON c.id_professor = p.id_professor
                 INNER JOIN users u ON p.id_user = u.id_user
                 LEFT JOIN enrollments e ON e.code_course = c.code_course
+                LEFT JOIN receipts r ON r.id_enrollment = e.id_enrollment
                 GROUP BY
                     c.code_course,
                     c.name,
@@ -348,6 +349,32 @@ class CourseModel:
             connection.close()
 
     @staticmethod
+    def get_courses_by_professor_id(id_professor: int | str) -> list[Course]:
+        """
+        Consulta los cursos asignados a un profesor específico.
+
+        Este método es la base de la HU-24, porque permite que la capa de
+        servicio obtenga únicamente los cursos pertenecientes al profesor que
+        inició sesión, sin exponer cursos de otros profesores.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return CourseModel._get_courses_by_professor_id_with_cursor(
+                cursor=cursor,
+                id_professor=id_professor,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    get_assigned_courses_by_professor_id = get_courses_by_professor_id
+    get_courses_by_professor = get_courses_by_professor_id
+    get_assigned_courses = get_courses_by_professor_id
+
+    @staticmethod
     def get_course_by_code(code_course: int | str) -> Course | None:
         connection = get_connection()
         cursor = connection.cursor()
@@ -361,6 +388,37 @@ class CourseModel:
         finally:
             cursor.close()
             connection.close()
+
+
+    @staticmethod
+    def get_course_by_code_and_professor_id(
+        code_course: int | str,
+        id_professor: int | str,
+    ) -> Course | None:
+        """
+        Consulta el detalle de un curso asignado a un profesor específico.
+
+        Este método soporta la HU-25, porque no basta con consultar un curso
+        por código: también se debe validar que el curso pertenezca al profesor
+        autenticado antes de exponer sus datos en la GUI del profesor.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return CourseModel._get_course_by_code_and_professor_id_with_cursor(
+                cursor=cursor,
+                code_course=code_course,
+                id_professor=id_professor,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    get_assigned_course_detail = get_course_by_code_and_professor_id
+    get_assigned_course_by_code = get_course_by_code_and_professor_id
+    get_course_detail_by_professor = get_course_by_code_and_professor_id
 
     @staticmethod
     def get_students_by_course(code_course: int | str) -> list[Student]:
@@ -432,6 +490,128 @@ class CourseModel:
             connection.close()
 
     @staticmethod
+    def _get_courses_by_professor_id_with_cursor(cursor, id_professor: int | str) -> list[Course]:
+        query = """
+            SELECT
+                c.code_course,
+                c.name,
+                c.description,
+                c.price,
+                c.duration_days,
+                c.intensity_hours,
+                c.schedule,
+                c.location,
+                c.start_date,
+                c.end_date,
+                p.id_professor,
+                p.professional_title,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality,
+                COUNT(DISTINCT CASE WHEN r.status = 'paid' THEN e.id_enrollment END) AS enrolled_students
+            FROM courses c
+            INNER JOIN professors p ON c.id_professor = p.id_professor
+            INNER JOIN users u ON p.id_user = u.id_user
+            LEFT JOIN enrollments e ON e.code_course = c.code_course
+                LEFT JOIN receipts r ON r.id_enrollment = e.id_enrollment
+            WHERE c.id_professor = %s
+            GROUP BY
+                c.code_course,
+                c.name,
+                c.description,
+                c.price,
+                c.duration_days,
+                c.intensity_hours,
+                c.schedule,
+                c.location,
+                c.start_date,
+                c.end_date,
+                p.id_professor,
+                p.professional_title,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality
+            ORDER BY c.start_date DESC, c.name ASC;
+        """
+        cursor.execute(query, (id_professor,))
+        results = cursor.fetchall()
+
+        return [CourseModel._map_to_entity(row) for row in results]
+
+
+    @staticmethod
+    def _get_course_by_code_and_professor_id_with_cursor(
+        cursor,
+        code_course: int | str,
+        id_professor: int | str,
+    ) -> Course | None:
+        query = """
+            SELECT
+                c.code_course,
+                c.name,
+                c.description,
+                c.price,
+                c.duration_days,
+                c.intensity_hours,
+                c.schedule,
+                c.location,
+                c.start_date,
+                c.end_date,
+                p.id_professor,
+                p.professional_title,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality,
+                COUNT(DISTINCT CASE WHEN r.status = 'paid' THEN e.id_enrollment END) AS enrolled_students
+            FROM courses c
+            INNER JOIN professors p ON c.id_professor = p.id_professor
+            INNER JOIN users u ON p.id_user = u.id_user
+            LEFT JOIN enrollments e ON e.code_course = c.code_course
+                LEFT JOIN receipts r ON r.id_enrollment = e.id_enrollment
+            WHERE c.code_course = %s
+              AND c.id_professor = %s
+            GROUP BY
+                c.code_course,
+                c.name,
+                c.description,
+                c.price,
+                c.duration_days,
+                c.intensity_hours,
+                c.schedule,
+                c.location,
+                c.start_date,
+                c.end_date,
+                p.id_professor,
+                p.professional_title,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality;
+        """
+        cursor.execute(query, (code_course, id_professor))
+        result = cursor.fetchone()
+
+        if result:
+            return CourseModel._map_to_entity(result)
+
+        return None
+
+    @staticmethod
     def _get_course_by_code_with_cursor(cursor, code_course: int | str) -> Course | None:
         query = """
             SELECT
@@ -454,11 +634,12 @@ class CourseModel:
                 u.email,
                 u.birth_date,
                 u.nationality,
-                COUNT(e.id_enrollment) AS enrolled_students
+                COUNT(DISTINCT CASE WHEN r.status = 'paid' THEN e.id_enrollment END) AS enrolled_students
             FROM courses c
             INNER JOIN professors p ON c.id_professor = p.id_professor
             INNER JOIN users u ON p.id_user = u.id_user
             LEFT JOIN enrollments e ON e.code_course = c.code_course
+                LEFT JOIN receipts r ON r.id_enrollment = e.id_enrollment
             WHERE c.code_course = %s
             GROUP BY
                 c.code_course,

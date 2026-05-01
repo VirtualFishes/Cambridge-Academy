@@ -686,4 +686,34 @@ class CourseDetailWidget(QWidget):
         QPushButton#paymentButton:hover {
             background-color: #d97706;
         }
+        QScrollBar:vertical, QScrollBar:horizontal {
+            background-color: #f1f5f9;
+            border: none;
+            margin: 0px;
+        }
+
+        QScrollBar:vertical {
+            width: 10px;
+        }
+
+        QScrollBar:horizontal {
+            height: 10px;
+        }
+
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+            background-color: #94a3b8;
+            border-radius: 5px;
+            min-height: 28px;
+            min-width: 28px;
+        }
+
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+            background-color: #64748b;
+        }
+
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+            height: 0px;
+        }
+
         """

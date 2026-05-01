@@ -304,6 +304,32 @@ class ProfessorModel:
             connection.close()
 
     @staticmethod
+    def get_professor_by_user_id(id_user: int) -> Professor | None:
+        """
+        Obtiene el perfil de profesor asociado a un usuario del sistema.
+
+        Este método permite transformar el User autenticado en LoginGUI en su
+        entidad Professor correspondiente. Es la base para que el panel del
+        profesor consulte únicamente la información académica asociada a su
+        cuenta.
+        """
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        try:
+            return ProfessorModel._get_professor_by_user_id_with_cursor(
+                cursor=cursor,
+                id_user=id_user,
+            )
+
+        finally:
+            cursor.close()
+            connection.close()
+
+    get_by_user_id = get_professor_by_user_id
+    find_by_user_id = get_professor_by_user_id
+
+    @staticmethod
     def email_exists(email: str) -> bool:
         connection = get_connection()
         cursor = connection.cursor()
@@ -355,6 +381,33 @@ class ProfessorModel:
             WHERE p.id_professor = %s;
         """
         cursor.execute(query, (id_professor,))
+        result = cursor.fetchone()
+
+        if result:
+            return ProfessorModel._map_to_entity(result)
+
+        return None
+
+    @staticmethod
+    def _get_professor_by_user_id_with_cursor(cursor, id_user: int) -> Professor | None:
+        query = """
+            SELECT
+                p.id_professor,
+                p.professional_title,
+                u.id_user,
+                u.name,
+                u.password,
+                u.role,
+                u.email,
+                u.birth_date,
+                u.nationality
+            FROM professors p
+            INNER JOIN users u ON p.id_user = u.id_user
+            WHERE p.id_user = %s
+              AND u.role = %s
+            LIMIT 1;
+        """
+        cursor.execute(query, (id_user, UserRole.PROFESSOR.value))
         result = cursor.fetchone()
 
         if result:

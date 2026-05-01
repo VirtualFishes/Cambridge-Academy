@@ -162,8 +162,9 @@ class AdminCrudWidget(QWidget):
         if self._supports_row_selection():
             self.selection_status_label = QLabel(self._initial_selection_text())
             self.selection_status_label.setObjectName("selectionStatus")
-            self.selection_status_label.setWordWrap(True)
-            layout.addWidget(self.selection_status_label)
+            #self.selection_status_label.setWordWrap(True)
+            self.selection_status_label.setFixedHeight(44)
+            #layout.addWidget(self.selection_status_label)
 
         scroll_area = QScrollArea()
         scroll_area.setObjectName("formScrollArea")
