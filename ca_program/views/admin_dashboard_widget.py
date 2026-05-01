@@ -18,8 +18,8 @@ class AdminDashboardWidget(QWidget):
         title = QLabel("Panel administrativo")
         title.setObjectName("pageTitle")
         subtitle = QLabel(
-            "Administra la información académica principal desde una sola ventana. "
-            "Cada opción abre un widget independiente, sin mezclar lógica de datos en la vista."
+            "Bienvenido al panel administrativo de Cambridge Academy. "
+            "Desde aquí puedes gestionar la información académica principal."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -31,9 +31,24 @@ class AdminDashboardWidget(QWidget):
         root.addLayout(grid)
 
         cards = [
-            ("Estudiantes", "HU-01 / HU-02", "Registrar y consultar estudiantes.", "students"),
-            ("Cursos", "HU-06 / HU-07", "Registrar y consultar cursos, fechas, precio y profesor asignado.", "courses"),
-            ("Profesores", "HU-11 / HU-12", "Registrar y consultar docentes y su título profesional.", "professors"),
+            (
+                "Estudiantes",
+                "Gestión académica",
+                "Registra y consulta la información básica de los estudiantes.",
+                "students",
+            ),
+            (
+                "Cursos",
+                "Oferta académica",
+                "Registra cursos, horarios, fechas, precios y profesor asignado.",
+                "courses",
+            ),
+            (
+                "Profesores",
+                "Equipo docente",
+                "Registra y consulta la información del personal docente.",
+                "professors",
+            ),
         ]
 
         for index, (title_text, tag, body, key) in enumerate(cards):

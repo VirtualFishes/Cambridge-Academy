@@ -25,7 +25,7 @@ class AdminGUI(QMainWindow):
         self.views: dict[str, QWidget] = {}
 
         self.setWindowTitle("Cambridge Academy | Administración")
-        self.setMinimumSize(1180, 720)
+        self.setMinimumSize(1280, 760)
         self.setStyleSheet(self.get_styles())
 
         self._build_ui()
@@ -242,7 +242,8 @@ class AdminGUI(QMainWindow):
 
         QLabel#fieldLabel {
             color: #334155;
-            font-weight: 600;
+            font-size: 13px;
+            font-weight: 700;
         }
 
         QLabel#serviceStatus[state="ok"] {
@@ -261,12 +262,22 @@ class AdminGUI(QMainWindow):
             padding: 8px 12px;
         }
 
+        QScrollArea#formScrollArea {
+            background-color: transparent;
+            border: none;
+        }
+
+        QWidget#formScrollContent {
+            background-color: transparent;
+        }
+
         QLineEdit, QTextEdit, QDateEdit, QSpinBox, QDoubleSpinBox {
             background-color: white;
             color: #0f172a;
             border: 1px solid #cbd5e1;
             border-radius: 8px;
             padding: 8px;
+            font-size: 14px;
             selection-background-color: #2563eb;
         }
 
@@ -309,14 +320,47 @@ class AdminGUI(QMainWindow):
             border-radius: 10px;
             selection-background-color: #dbeafe;
             selection-color: #0f172a;
+            color: #0f172a;
+            font-size: 13px;
         }
 
         QHeaderView::section {
             background-color: #1e3a8a;
             color: white;
             border: none;
-            padding: 8px;
+            padding: 7px;
             font-weight: 700;
+            font-size: 12px;
+        }
+
+        QScrollBar:vertical, QScrollBar:horizontal {
+            background-color: #f1f5f9;
+            border: none;
+            margin: 0px;
+        }
+
+        QScrollBar:vertical {
+            width: 10px;
+        }
+
+        QScrollBar:horizontal {
+            height: 10px;
+        }
+
+        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+            background-color: #94a3b8;
+            border-radius: 5px;
+            min-height: 28px;
+            min-width: 28px;
+        }
+
+        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+            background-color: #64748b;
+        }
+
+        QScrollBar::add-line, QScrollBar::sub-line {
+            width: 0px;
+            height: 0px;
         }
 
         QStatusBar {
