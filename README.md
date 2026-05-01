@@ -7,6 +7,8 @@
 **Interfaz gráfica:** PySide6
 **Base de datos:** PostgreSQL / Supabase
 
+> Contenido publicitario: https://www.tiktok.com/@stivenmejiajo/video/7634946003065376021?_r=1&_t=ZS-9608R907UkH
+
 ---
 
 ## Descripción del proyecto
