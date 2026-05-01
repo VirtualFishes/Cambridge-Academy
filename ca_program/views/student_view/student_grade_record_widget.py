@@ -1,3 +1,7 @@
+"""Vista de registro académico del estudiante.
+
+Muestra notas y resúmenes en modo consulta, delegando la obtención del registro a GradeService."""
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -15,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.grade_service import GradeService
+from ca_program.views.student_view.student_view_utils import format_grade, grade_status_label
 
 
 class StudentGradeRecordWidget(QWidget):
@@ -376,12 +381,8 @@ class StudentGradeRecordWidget(QWidget):
 
     @staticmethod
     def _status_to_label(status: str) -> str:
-        status = str(status or "pending").strip().lower()
-        if status == "passed":
-            return "Aprobado"
-        if status == "failed":
-            return "Reprobado"
-        return "Pendiente"
+        """Normaliza el estado académico visible."""
+        return grade_status_label(status)
 
     @staticmethod
     def _status_badge_name(status_value: str, status_label: str) -> str:
@@ -396,21 +397,13 @@ class StudentGradeRecordWidget(QWidget):
 
     @staticmethod
     def _format_grade(value) -> str:
-        if value in (None, ""):
-            return "—"
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return str(value)
+        """Formatea una nota individual."""
+        return format_grade(value)
 
     @staticmethod
     def _format_average(value) -> str:
-        if value in (None, ""):
-            return "—"
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return str(value)
+        """Formatea un promedio académico."""
+        return format_grade(value)
 
     def get_styles(self) -> str:
         return """

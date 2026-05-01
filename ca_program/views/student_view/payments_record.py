@@ -1,3 +1,7 @@
+"""Vista de historial de pagos del estudiante.
+
+Presenta pagos realizados y permite usar un proveedor de datos externo para mantener desacoplada la GUI."""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -10,6 +14,17 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+)
+
+from ca_program.views.student_view.student_view_utils import (
+    clear_layout,
+    enum_value,
+    format_currency,
+    format_date,
+    get_user_id,
+    payment_method_label,
+    receipt_status_label,
+    clean_text,
 )
 
 
@@ -154,9 +169,48 @@ class PaymentsRecordWidget(QWidget):
         self._render_payments()
 
     def _get_payment_history(self, id_user) -> dict:
+        """Consulta el historial de pagos usando primero un proveedor o servicio.
+
+        La vista acepta un proveedor externo para pruebas e integración. Si el
+        proyecto incorpora PaymentService, se usa antes de recurrir al modelo
+        existente como compatibilidad temporal.
+        """
         if callable(self.payment_history_provider):
             return self.payment_history_provider(id_user)
 
+        service_result = self._get_payment_history_from_service(id_user)
+        if service_result is not None:
+            return service_result
+
+        return self._get_payment_history_from_model(id_user)
+
+    @staticmethod
+    def _get_payment_history_from_service(id_user) -> dict | None:
+        """Intenta consultar pagos desde PaymentService si está disponible."""
+        try:
+            from ca_program.services.payment_service import PaymentService
+        except Exception:
+            return None
+
+        method_names = (
+            "get_payments_by_student_user_id",
+            "get_student_payments_by_user_id",
+            "get_payment_history_by_student_user_id",
+            "get_payment_history",
+        )
+
+        for method_name in method_names:
+            method = getattr(PaymentService, method_name, None)
+            if callable(method):
+                try:
+                    return method(id_user)
+                except TypeError:
+                    return method(id_user=id_user)
+
+        return None
+
+    def _get_payment_history_from_model(self, id_user) -> dict:
+        """Consulta de compatibilidad mientras no exista PaymentService."""
         try:
             from ca_program.models.payment_model import PaymentModel
         except Exception as e:
@@ -340,11 +394,8 @@ class PaymentsRecordWidget(QWidget):
         self.last_payment_card.value_label.setText(last_payment)
 
     def _clear_records(self):
-        while self.records_layout.count():
-            item = self.records_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """Limpia las tarjetas del historial antes de renderizar."""
+        clear_layout(self.records_layout)
 
     def _normalize_payment(self, payment) -> dict:
         if isinstance(payment, dict):
@@ -381,10 +432,10 @@ class PaymentsRecordWidget(QWidget):
         return {
             "id_payment": getattr(payment, "id_payment", ""),
             "payment_date": getattr(payment, "payment_date", ""),
-            "payment_method": getattr(payment_method, "value", payment_method),
+            "payment_method": enum_value(payment_method),
             "id_receipt": getattr(receipt, "id_receipt", ""),
             "amount": getattr(receipt, "amount", 0),
-            "receipt_status": getattr(receipt_status, "value", receipt_status),
+            "receipt_status": enum_value(receipt_status),
             "issue_date": getattr(receipt, "issue_date", ""),
             "due_date": getattr(receipt, "due_date", ""),
             "code_course": getattr(course, "code_course", ""),
@@ -393,51 +444,30 @@ class PaymentsRecordWidget(QWidget):
         }
 
     def _get_user_id(self):
-        return getattr(self.user, "id_user", None)
+        """Obtiene el id del estudiante autenticado."""
+        return get_user_id(self.user)
 
     @staticmethod
     def _format_currency(value) -> str:
-        try:
-            amount = float(value or 0)
-        except (TypeError, ValueError):
-            amount = 0
-
-        if amount.is_integer():
-            return f"$ {int(amount)}"
-        return f"$ {amount:,.2f}"
+        """Formatea moneda para el historial de pagos."""
+        return format_currency(value)
 
     @staticmethod
     def _format_date(value) -> str:
-        if not value:
-            return "Sin fecha"
-
-        if hasattr(value, "strftime"):
-            return value.strftime("%d/%m/%Y")
-
-        return str(value)
+        """Formatea fechas de pago y recibo."""
+        return format_date(value, default="Sin fecha")
 
     @staticmethod
     def _format_payment_method(value) -> str:
-        value = str(value or "").strip()
-        labels = {
-            "cash": "Efectivo",
-            "bank_transfer": "Transferencia bancaria",
-            "card": "Tarjeta",
-        }
-        return labels.get(value, value or "No especificado")
+        """Normaliza métodos de pago."""
+        return payment_method_label(value)
 
     @staticmethod
     def _format_receipt_status(value) -> str:
-        value = str(value or "").strip()
-        labels = {
-            "paid": "Pagado",
-            "pending": "Pendiente",
-            "expired": "Vencido",
-        }
-        return labels.get(value, value or "Sin estado")
+        """Normaliza estados de recibo."""
+        return receipt_status_label(value)
 
     @staticmethod
     def _safe_text(value) -> str:
-        if value is None or value == "":
-            return "—"
-        return str(value)
+        """Convierte valores vacíos en guion largo para la GUI."""
+        return clean_text(value, "—")

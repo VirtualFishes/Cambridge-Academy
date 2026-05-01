@@ -1,48 +1,49 @@
+"""
+Servicio de autenticación.
+
+Valida credenciales y retorna una respuesta segura para que la GUI decida la
+navegación según el rol del usuario autenticado.
+"""
+
 from ca_program.models.user_model import UserModel
+from ca_program.services import service_utils as utils
 
 
 class LoginService:
+    """Servicio encargado del inicio de sesión de usuarios."""
 
     @staticmethod
     def login(name: str, password: str) -> dict:
         """
-        Realiza el proceso de autenticación de un usuario.
+        Autentica un usuario por nombre y contraseña.
 
-        Retorna un diccionario con:
-        - success: bool
-        - message: str
-        - user: User (opcional)
-        - role: str (opcional)
+        Retorna un diccionario con success, message, user y role. La validación
+        de contraseña se delega a UserModel para mantener una sola fuente de
+        verdad sobre cómo se comparan credenciales.
         """
-
         try:
-            user = UserModel.get_user_by_name(name)
+            clean_name = str(name or "").strip()
+            clean_password = str(password or "").strip()
 
-            # Usuario no existe
+            if not clean_name or not clean_password:
+                return utils.error_response("Nombre de usuario y contraseña son obligatorios.")
+
+            user = UserModel.get_user_by_name(clean_name)
             if not user:
-                return {
-                    "success": False,
-                    "message": "Usuario no encontrado"
-                }
+                return utils.error_response("Usuario no encontrado")
 
-            # Contraseña incorrecta
-            if not UserModel.validate_password(user, password):
-                return {
-                    "success": False,
-                    "message": "Contraseña incorrecta"
-                }
+            if not UserModel.validate_password(user, clean_password):
+                return utils.error_response("Contraseña incorrecta")
 
-            # Login exitoso
-            return {
-                "success": True,
-                "message": "Inicio de sesión exitoso",
-                "user": user,
-                "role": user.role.value  # útil para redirección en la GUI
-            }
+            return utils.success_response(
+                "Inicio de sesión exitoso",
+                user=user,
+                user_data=utils.user_to_dict(user),
+                role=user.role.value,
+            )
 
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error durante el inicio de sesión"
-            }
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error durante el inicio de sesión",
+            )

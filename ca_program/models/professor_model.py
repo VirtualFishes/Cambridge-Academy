@@ -1,11 +1,26 @@
+"""
+Modelo de persistencia para profesores.
+
+Gestiona la tabla ``professors`` y su vínculo con ``users``. Mantiene las
+operaciones transaccionales necesarias para crear, modificar, consultar y
+eliminar profesores sin trasladar lógica de interfaz a la capa de datos.
+"""
+
 from ca_program.entities.fixed_values import UserRole
 from ca_program.entities.professor import Professor
-from ca_program.entities.user import User
+from ca_program.models.model_utils import (
+    build_user_entity,
+    require_identifier,
+    require_positive_int,
+    require_text,
+    validate_email,
+)
 from ca_program.models.user_model import UserModel
 from database.connection import get_connection
 
 
 class ProfessorModel:
+    """Acceso a datos de profesores y validaciones de persistencia."""
 
     @staticmethod
     def create_professor(
@@ -15,19 +30,27 @@ class ProfessorModel:
         email: str,
         birth_date,
         nationality: str,
-        professional_title: str
+        professional_title: str,
     ) -> Professor:
+        """Crea un profesor junto con su usuario de rol PROFESSOR."""
+        clean_id_professor = require_identifier(id_professor, "Identificación del profesor")
+        clean_name = require_text(name, "Nombre")
+        clean_password = require_text(password, "Contraseña")
+        clean_email = validate_email(email)
+        clean_nationality = require_text(nationality, "Nacionalidad")
+        clean_professional_title = require_text(professional_title, "Título profesional")
+
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             user_created = UserModel.create_user(
-                name=name,
-                password=password,
+                name=clean_name,
+                password=clean_password,
                 role=UserRole.PROFESSOR,
-                email=email,
+                email=clean_email,
                 birth_date=birth_date,
-                nationality=nationality,
+                nationality=clean_nationality,
                 cursor=cursor,
             )
 
@@ -36,14 +59,14 @@ class ProfessorModel:
                 INSERT INTO professors (id_professor, id_user, professional_title)
                 VALUES (%s, %s, %s);
                 """,
-                (id_professor, user_created.id_user, professional_title),
+                (clean_id_professor, user_created.id_user, clean_professional_title),
             )
 
             connection.commit()
 
             return Professor(
-                id_professor=id_professor,
-                professional_title=professional_title,
+                id_professor=clean_id_professor,
+                professional_title=clean_professional_title,
                 user=user_created,
             )
 
@@ -67,48 +90,40 @@ class ProfessorModel:
         professional_title: str,
     ) -> Professor:
         """
-        Actualiza la información de un profesor registrado.
+        Actualiza identificación, datos de usuario y título profesional.
 
-        Los datos personales se actualizan en la tabla users porque el profesor
-        está asociado a un usuario del sistema. Los datos propios del docente,
-        como la identificación y el título profesional, se actualizan en la
-        tabla professors.
-
-        current_id_professor:
-            Identificación actual del profesor en la base de datos.
-
-        id_professor:
-            Nueva identificación del profesor. Puede ser igual a la actual.
-
-        password:
-            Si llega None o cadena vacía, se conserva la contraseña actual.
+        La contraseña se conserva cuando ``password`` llega vacío o None. La
+        operación completa se confirma o revierte como una sola transacción.
         """
+        current_id = require_identifier(current_id_professor, "Identificación actual")
+        new_id = require_identifier(id_professor, "Nueva identificación")
+        clean_name = require_text(name, "Nombre")
+        clean_email = validate_email(email)
+        clean_nationality = require_text(nationality, "Nacionalidad")
+        clean_professional_title = require_text(professional_title, "Título profesional")
+        clean_password = None if password is None else str(password).strip()
+
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             current_professor = ProfessorModel._get_professor_by_id_with_cursor(
                 cursor=cursor,
-                id_professor=current_id_professor,
+                id_professor=current_id,
             )
 
             if current_professor is None:
                 raise ValueError("El profesor que intenta modificar no existe.")
 
-            if (
-                id_professor != current_id_professor
-                and ProfessorModel._professor_id_exists_with_cursor(cursor, id_professor)
-            ):
+            if new_id != current_id and ProfessorModel._professor_id_exists_with_cursor(cursor, new_id):
                 raise ValueError("Ya existe un profesor con esa identificación.")
 
             if ProfessorModel._email_exists_for_other_user_with_cursor(
                 cursor=cursor,
-                email=email,
+                email=clean_email,
                 id_user=current_professor.user.id_user,
             ):
                 raise ValueError("Ya existe otro usuario registrado con ese correo electrónico.")
-
-            clean_password = None if password is None else str(password).strip()
 
             if clean_password:
                 cursor.execute(
@@ -123,11 +138,11 @@ class ProfessorModel:
                     WHERE id_user = %s;
                     """,
                     (
-                        name,
+                        clean_name,
                         clean_password,
-                        email,
+                        clean_email,
                         birth_date,
-                        nationality,
+                        clean_nationality,
                         current_professor.user.id_user,
                     ),
                 )
@@ -143,10 +158,10 @@ class ProfessorModel:
                     WHERE id_user = %s;
                     """,
                     (
-                        name,
-                        email,
+                        clean_name,
+                        clean_email,
                         birth_date,
-                        nationality,
+                        clean_nationality,
                         current_professor.user.id_user,
                     ),
                 )
@@ -159,16 +174,12 @@ class ProfessorModel:
                     professional_title = %s
                 WHERE id_professor = %s;
                 """,
-                (
-                    id_professor,
-                    professional_title,
-                    current_id_professor,
-                ),
+                (new_id, clean_professional_title, current_id),
             )
 
             updated_professor = ProfessorModel._get_professor_by_id_with_cursor(
                 cursor=cursor,
-                id_professor=id_professor,
+                id_professor=new_id,
             )
 
             if updated_professor is None:
@@ -193,23 +204,20 @@ class ProfessorModel:
     @staticmethod
     def delete_professor(id_professor: str) -> Professor:
         """
-        Elimina permanentemente un profesor.
+        Elimina un profesor solo si no tiene cursos asignados.
 
-        La eliminación se permite únicamente cuando el profesor no tiene cursos
-        asociados. Los cursos son registros académicos independientes y no deben
-        eliminarse automáticamente como consecuencia de borrar un profesor.
-
-        Si el profesor no tiene cursos asignados, se elimina primero el registro
-        de professors y después el usuario asociado en users, todo dentro de la
-        misma transacción.
+        No se eliminan cursos en cascada porque son registros académicos
+        independientes. Antes de borrar, el usuario administrativo debe
+        reasignar o eliminar esos cursos desde su propio módulo.
         """
+        clean_id_professor = require_identifier(id_professor, "Identificación del profesor")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             professor = ProfessorModel._get_professor_by_id_with_cursor(
                 cursor=cursor,
-                id_professor=id_professor,
+                id_professor=clean_id_professor,
             )
 
             if professor is None:
@@ -217,7 +225,7 @@ class ProfessorModel:
 
             assigned_courses = ProfessorModel._count_courses_by_professor_with_cursor(
                 cursor=cursor,
-                id_professor=id_professor,
+                id_professor=clean_id_professor,
             )
 
             if assigned_courses > 0:
@@ -226,21 +234,8 @@ class ProfessorModel:
                     "Primero debe reasignar o eliminar esos cursos."
                 )
 
-            cursor.execute(
-                """
-                DELETE FROM professors
-                WHERE id_professor = %s;
-                """,
-                (id_professor,),
-            )
-
-            cursor.execute(
-                """
-                DELETE FROM users
-                WHERE id_user = %s;
-                """,
-                (professor.user.id_user,),
-            )
+            cursor.execute("DELETE FROM professors WHERE id_professor = %s;", (clean_id_professor,))
+            cursor.execute("DELETE FROM users WHERE id_user = %s;", (professor.user.id_user,))
 
             connection.commit()
             return professor
@@ -259,6 +254,7 @@ class ProfessorModel:
 
     @staticmethod
     def get_all_professors() -> list[Professor]:
+        """Retorna todos los profesores registrados para selección administrativa."""
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -289,15 +285,16 @@ class ProfessorModel:
 
     @staticmethod
     def get_professor_by_id(id_professor: str) -> Professor | None:
+        """Consulta un profesor por su identificación."""
+        clean_id_professor = require_identifier(id_professor, "Identificación del profesor")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
-            professor = ProfessorModel._get_professor_by_id_with_cursor(
+            return ProfessorModel._get_professor_by_id_with_cursor(
                 cursor=cursor,
-                id_professor=id_professor,
+                id_professor=clean_id_professor,
             )
-            return professor
 
         finally:
             cursor.close()
@@ -305,21 +302,15 @@ class ProfessorModel:
 
     @staticmethod
     def get_professor_by_user_id(id_user: int) -> Professor | None:
-        """
-        Obtiene el perfil de profesor asociado a un usuario del sistema.
-
-        Este método permite transformar el User autenticado en LoginGUI en su
-        entidad Professor correspondiente. Es la base para que el panel del
-        profesor consulte únicamente la información académica asociada a su
-        cuenta.
-        """
+        """Obtiene el perfil de profesor asociado a un usuario autenticado."""
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return ProfessorModel._get_professor_by_user_id_with_cursor(
                 cursor=cursor,
-                id_user=id_user,
+                id_user=clean_id_user,
             )
 
         finally:
@@ -331,6 +322,8 @@ class ProfessorModel:
 
     @staticmethod
     def email_exists(email: str) -> bool:
+        """Verifica si un correo ya existe en la tabla users."""
+        clean_email = validate_email(email)
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -341,7 +334,7 @@ class ProfessorModel:
                 WHERE LOWER(email) = LOWER(%s)
                 LIMIT 1;
             """
-            cursor.execute(query, (email,))
+            cursor.execute(query, (clean_email,))
             return cursor.fetchone() is not None
 
         finally:
@@ -350,13 +343,15 @@ class ProfessorModel:
 
     @staticmethod
     def has_assigned_courses(id_professor: str) -> bool:
+        """Indica si un profesor tiene cursos registrados a su nombre."""
+        clean_id_professor = require_identifier(id_professor, "Identificación del profesor")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return ProfessorModel._count_courses_by_professor_with_cursor(
                 cursor=cursor,
-                id_professor=id_professor,
+                id_professor=clean_id_professor,
             ) > 0
 
         finally:
@@ -365,6 +360,7 @@ class ProfessorModel:
 
     @staticmethod
     def _get_professor_by_id_with_cursor(cursor, id_professor: str) -> Professor | None:
+        """Consulta interna de profesor por identificación usando cursor activo."""
         query = """
             SELECT
                 p.id_professor,
@@ -390,6 +386,7 @@ class ProfessorModel:
 
     @staticmethod
     def _get_professor_by_user_id_with_cursor(cursor, id_user: int) -> Professor | None:
+        """Consulta interna de profesor por id_user y rol PROFESSOR."""
         query = """
             SELECT
                 p.id_professor,
@@ -417,6 +414,7 @@ class ProfessorModel:
 
     @staticmethod
     def _professor_id_exists_with_cursor(cursor, id_professor: str) -> bool:
+        """Indica si ya existe un profesor con la identificación suministrada."""
         query = """
             SELECT 1
             FROM professors
@@ -428,6 +426,7 @@ class ProfessorModel:
 
     @staticmethod
     def _email_exists_for_other_user_with_cursor(cursor, email: str, id_user: int) -> bool:
+        """Indica si el correo pertenece a un usuario distinto al indicado."""
         query = """
             SELECT 1
             FROM users
@@ -440,6 +439,7 @@ class ProfessorModel:
 
     @staticmethod
     def _count_courses_by_professor_with_cursor(cursor, id_professor: str) -> int:
+        """Cuenta cursos asignados a un profesor sin abrir otra conexión."""
         query = """
             SELECT COUNT(*)
             FROM courses
@@ -451,6 +451,7 @@ class ProfessorModel:
 
     @staticmethod
     def _map_to_entity(row: tuple) -> Professor:
+        """Mapea una fila JOIN professors-users a entidad Professor."""
         (
             id_professor,
             professional_title,
@@ -463,11 +464,11 @@ class ProfessorModel:
             nationality,
         ) = row
 
-        user = User(
+        user = build_user_entity(
             id_user=id_user,
             name=name,
             password=password,
-            role=UserRole(role),
+            role=role,
             email=email,
             birth_date=birth_date,
             nationality=nationality,

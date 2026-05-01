@@ -1,422 +1,326 @@
-import re
-from datetime import date, datetime
+"""
+Servicio de profesores.
 
-from ca_program.models.professor_model import ProfessorModel
+Valida solicitudes administrativas y de consulta docente, coordina operaciones
+con ProfessorModel y CourseModel, y devuelve respuestas homogéneas para la GUI.
+"""
+
 from ca_program.models.course_model import CourseModel
+from ca_program.models.professor_model import ProfessorModel
+from ca_program.services import service_utils as utils
 
 
 class ProfessorService:
-    EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    """Servicio de aplicación para gestión administrativa y consultas de profesor."""
+
+    MIN_ID_LENGTH = 3
+    MIN_NAME_LENGTH = 3
+    MIN_PASSWORD_LENGTH = 4
+    MIN_TEXT_LENGTH = 3
 
     @staticmethod
     def register_professor(data: dict | None = None, **kwargs) -> dict:
-        payload = ProfessorService._normalize_payload(data, kwargs)
+        """Registra un profesor y su usuario asociado."""
+        payload = utils.normalize_payload(data, kwargs)
 
         try:
             clean_data = ProfessorService._validate_registration_payload(payload)
 
             if ProfessorModel.get_professor_by_id(clean_data["id_professor"]):
-                return {
-                    "success": False,
-                    "message": "Ya existe un profesor con esa identificación.",
-                }
+                return utils.error_response("Ya existe un profesor con esa identificación.")
 
             if ProfessorModel.email_exists(clean_data["email"]):
-                return {
-                    "success": False,
-                    "message": "Ya existe un usuario registrado con ese correo electrónico.",
-                }
+                return utils.error_response("Ya existe un usuario registrado con ese correo electrónico.")
 
             professor = ProfessorModel.create_professor(**clean_data)
+            return utils.success_response(
+                "Profesor registrado correctamente.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                data=professor,
+            )
 
-            return {
-                "success": True,
-                "message": "Profesor registrado correctamente.",
-                "professor": professor,
-                "data": professor,
-            }
-
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al registrar el profesor.",
-            }
+        except ValueError as exc:
+            return utils.error_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al registrar el profesor.",
+            )
 
     @staticmethod
     def update_professor(data: dict | None = None, **kwargs) -> dict:
         """
         Modifica la información de un profesor existente.
 
-        La identificación actual debe llegar en current_id_professor. Los datos
-        personales se actualizan sobre el usuario asociado al profesor.
-        La contraseña es opcional: si llega vacía, se conserva la actual.
+        La contraseña es opcional. Si no se envía, se conserva la contraseña
+        actual del usuario asociado.
         """
-        payload = ProfessorService._normalize_payload(data, kwargs)
+        payload = utils.normalize_payload(data, kwargs)
 
         try:
             clean_data = ProfessorService._validate_update_payload(payload)
 
             current_professor = ProfessorModel.get_professor_by_id(clean_data["current_id_professor"])
             if not current_professor:
-                return {
-                    "success": False,
-                    "message": "El profesor que intenta modificar no existe.",
-                }
+                return utils.error_response("El profesor que intenta modificar no existe.")
 
             id_changed = clean_data["id_professor"] != clean_data["current_id_professor"]
             if id_changed and ProfessorModel.get_professor_by_id(clean_data["id_professor"]):
-                return {
-                    "success": False,
-                    "message": "Ya existe un profesor con esa identificación.",
-                }
+                return utils.error_response("Ya existe un profesor con esa identificación.")
 
             professor = ProfessorModel.update_professor(**clean_data)
+            return utils.success_response(
+                "Profesor modificado correctamente.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                data=professor,
+            )
 
-            return {
-                "success": True,
-                "message": "Profesor modificado correctamente.",
-                "professor": professor,
-                "data": professor,
-            }
-
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al modificar el profesor.",
-            }
+        except ValueError as exc:
+            return utils.error_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al modificar el profesor.",
+            )
 
     @staticmethod
     def delete_professor(data: dict | str | None = None, **kwargs) -> dict:
         """
-        Elimina permanentemente un profesor registrado.
+        Elimina permanentemente un profesor sin cursos asignados.
 
-        La eliminación solo se permite cuando el profesor no tiene cursos
-        asignados. Esta regla protege la integridad académica del sistema:
-        los cursos no deben eliminarse automáticamente al borrar un docente.
+        La restricción protege la historia académica: un curso no debe
+        desaparecer automáticamente al borrar su profesor.
         """
-        payload = ProfessorService._normalize_delete_payload(data, kwargs)
+        payload = utils.normalize_delete_payload(data, kwargs, id_key="id_professor")
 
         try:
             id_professor = ProfessorService._validate_delete_payload(payload)
 
             professor = ProfessorModel.get_professor_by_id(id_professor)
             if not professor:
-                return {
-                    "success": False,
-                    "message": "El profesor que intenta eliminar no existe.",
-                }
+                return utils.error_response("El profesor que intenta eliminar no existe.")
 
             if ProfessorModel.has_assigned_courses(id_professor):
-                return {
-                    "success": False,
-                    "message": (
-                        "No se puede eliminar el profesor porque tiene cursos asignados. "
-                        "Primero debe reasignar o eliminar esos cursos."
-                    ),
-                }
+                return utils.error_response(
+                    "No se puede eliminar el profesor porque tiene cursos asignados. "
+                    "Primero debe reasignar o eliminar esos cursos."
+                )
 
             deleted_professor = ProfessorModel.delete_professor(id_professor)
+            return utils.success_response(
+                "Profesor eliminado correctamente.",
+                professor=deleted_professor,
+                professor_data=utils.professor_to_dict(deleted_professor),
+                data=deleted_professor,
+            )
 
-            return {
-                "success": True,
-                "message": "Profesor eliminado correctamente.",
-                "professor": deleted_professor,
-                "data": deleted_professor,
-            }
-
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al eliminar el profesor.",
-            }
+        except ValueError as exc:
+            return utils.error_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al eliminar el profesor.",
+            )
 
     @staticmethod
     def get_professors() -> dict:
+        """Consulta todos los profesores registrados."""
         try:
             professors = ProfessorModel.get_all_professors()
+            professor_records = [utils.professor_to_dict(professor) for professor in professors]
+            return utils.success_response(
+                "Profesores consultados correctamente.",
+                professors=professors,
+                professor_records=professor_records,
+                data=professors,
+            )
 
-            return {
-                "success": True,
-                "message": "Profesores consultados correctamente.",
-                "professors": professors,
-                "data": professors,
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al consultar los profesores.",
-                "professors": [],
-                "data": [],
-            }
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al consultar los profesores.",
+                professors=[],
+                professor_records=[],
+                data=[],
+            )
 
     @staticmethod
     def get_professor_by_id(id_professor: str) -> dict:
+        """Consulta un profesor por identificación."""
         try:
-            id_professor = str(id_professor).strip()
-            if not id_professor:
-                return {
-                    "success": False,
-                    "message": "La identificación del profesor es obligatoria.",
-                }
-
-            professor = ProfessorModel.get_professor_by_id(id_professor)
+            clean_id_professor = ProfessorService._validate_id_professor(id_professor)
+            professor = ProfessorModel.get_professor_by_id(clean_id_professor)
 
             if not professor:
-                return {
-                    "success": False,
-                    "message": "Profesor no encontrado.",
-                }
+                return utils.error_response("Profesor no encontrado.")
 
-            return {
-                "success": True,
-                "message": "Profesor encontrado.",
-                "professor": professor,
-                "data": professor,
-            }
+            return utils.success_response(
+                "Profesor encontrado.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                data=professor,
+            )
 
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al consultar el profesor.",
-            }
+        except ValueError as exc:
+            return utils.error_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al consultar el profesor.",
+            )
 
     @staticmethod
     def get_professor_by_user_id(id_user: int | str) -> dict:
-        """
-        Consulta el perfil de profesor asociado a un usuario autenticado.
-
-        Este método conecta el usuario del login con el registro real de
-        professors, sin exponer consultas SQL en la interfaz gráfica.
-        """
+        """Consulta el perfil docente asociado al usuario autenticado."""
         try:
-            id_user = ProfessorService._extract_user_id(id_user=id_user)
-            professor = ProfessorModel.get_professor_by_user_id(id_user)
+            clean_id_user = utils.extract_user_id(id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(clean_id_user)
 
             if not professor:
-                return {
-                    "success": False,
-                    "message": "No existe un perfil de profesor asociado a este usuario.",
-                    "professor": None,
-                    "data": None,
-                }
+                return utils.error_response(
+                    "No existe un perfil de profesor asociado a este usuario.",
+                    professor=None,
+                    data=None,
+                )
 
-            return {
-                "success": True,
-                "message": "Profesor encontrado.",
-                "professor": professor,
-                "professor_data": ProfessorService._professor_to_dict(professor),
-                "data": professor,
-            }
+            return utils.success_response(
+                "Profesor encontrado.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                data=professor,
+            )
 
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-                "professor": None,
-                "data": None,
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al consultar el perfil del profesor.",
-                "professor": None,
-                "data": None,
-            }
+        except ValueError as exc:
+            return utils.error_response(str(exc), professor=None, data=None)
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al consultar el perfil del profesor.",
+                professor=None,
+                data=None,
+            )
 
     @staticmethod
     def get_assigned_courses_by_user(user=None, id_user: int | str | None = None) -> dict:
         """
         Consulta los cursos asignados al profesor autenticado.
 
-        Flujo de HU-24:
-        User autenticado -> Professor asociado -> Cursos filtrados por id_professor.
-        La GUI de profesores debe consumir este método y no consultar modelos ni
-        base de datos directamente.
+        Soporta HU-24 y evita que la GUI consulte modelos directamente.
         """
         try:
             if not ProfessorService._user_has_professor_role(user):
-                return {
-                    "success": False,
-                    "message": "El usuario autenticado no tiene permisos de profesor.",
-                    "professor": None,
-                    "professor_data": None,
-                    "courses": [],
-                    "entities": [],
-                    "data": [],
-                }
+                return ProfessorService._empty_assigned_courses_response(
+                    "El usuario autenticado no tiene permisos de profesor."
+                )
 
-            id_user = ProfessorService._extract_user_id(user=user, id_user=id_user)
-            professor = ProfessorModel.get_professor_by_user_id(id_user)
+            clean_id_user = utils.extract_user_id(user=user, id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(clean_id_user)
 
             if not professor:
-                return {
-                    "success": False,
-                    "message": "No existe un perfil de profesor asociado a este usuario.",
-                    "professor": None,
-                    "professor_data": None,
-                    "courses": [],
-                    "entities": [],
-                    "data": [],
-                }
+                return ProfessorService._empty_assigned_courses_response(
+                    "No existe un perfil de profesor asociado a este usuario."
+                )
 
             courses = CourseModel.get_courses_by_professor_id(professor.id_professor)
-            course_records = [ProfessorService._course_to_dict(course) for course in courses]
+            course_records = [utils.course_to_dict(course) for course in courses]
 
-            return {
-                "success": True,
-                "message": "Cursos asignados consultados correctamente.",
-                "professor": professor,
-                "professor_data": ProfessorService._professor_to_dict(professor),
-                "courses": course_records,
-                "entities": courses,
-                "data": course_records,
-            }
+            return utils.success_response(
+                "Cursos asignados consultados correctamente.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                courses=course_records,
+                entities=courses,
+                data=course_records,
+            )
 
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-                "professor": None,
-                "professor_data": None,
-                "courses": [],
-                "entities": [],
-                "data": [],
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al consultar los cursos asignados.",
-                "professor": None,
-                "professor_data": None,
-                "courses": [],
-                "entities": [],
-                "data": [],
-            }
+        except ValueError as exc:
+            return ProfessorService._empty_assigned_courses_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al consultar los cursos asignados.",
+                professor=None,
+                professor_data=None,
+                courses=[],
+                entities=[],
+                data=[],
+            )
 
     @staticmethod
-    def get_assigned_course_detail_by_user(user=None, id_user: int | str | None = None, code_course: str | None = None) -> dict:
+    def get_assigned_course_detail_by_user(
+        user=None,
+        id_user: int | str | None = None,
+        code_course: str | None = None,
+    ) -> dict:
         """
         Consulta el detalle de un curso asignado al profesor autenticado.
 
-        Flujo de HU-25:
-        User autenticado -> Professor asociado -> Curso filtrado por code_course
-        e id_professor. La validación por profesor evita consultar cursos ajenos
-        aunque se conozca el código del curso.
+        Soporta HU-25 validando profesor y código de curso en la misma operación.
         """
         try:
             if not ProfessorService._user_has_professor_role(user):
-                return {
-                    "success": False,
-                    "message": "El usuario autenticado no tiene permisos de profesor.",
-                    "professor": None,
-                    "professor_data": None,
-                    "course": None,
-                    "entity": None,
-                    "data": None,
-                }
+                return ProfessorService._empty_course_detail_response(
+                    "El usuario autenticado no tiene permisos de profesor."
+                )
 
-            code_course = str(code_course or "").strip()
-            if not code_course:
-                raise ValueError("El código del curso es obligatorio para consultar el detalle.")
-
-            id_user = ProfessorService._extract_user_id(user=user, id_user=id_user)
-            professor = ProfessorModel.get_professor_by_user_id(id_user)
+            clean_code_course = utils.clean_text(
+                code_course,
+                "El código del curso",
+                min_length=1,
+            )
+            clean_id_user = utils.extract_user_id(user=user, id_user=id_user)
+            professor = ProfessorModel.get_professor_by_user_id(clean_id_user)
 
             if not professor:
-                return {
-                    "success": False,
-                    "message": "No existe un perfil de profesor asociado a este usuario.",
-                    "professor": None,
-                    "professor_data": None,
-                    "course": None,
-                    "entity": None,
-                    "data": None,
-                }
+                return ProfessorService._empty_course_detail_response(
+                    "No existe un perfil de profesor asociado a este usuario."
+                )
 
             course = CourseModel.get_course_by_code_and_professor_id(
-                code_course=code_course,
+                code_course=clean_code_course,
                 id_professor=professor.id_professor,
             )
-
             if not course:
-                return {
-                    "success": False,
-                    "message": "Curso no encontrado o no asignado al profesor autenticado.",
-                    "professor": professor,
-                    "professor_data": ProfessorService._professor_to_dict(professor),
-                    "course": None,
-                    "entity": None,
-                    "data": None,
-                }
+                return utils.error_response(
+                    "Curso no encontrado o no asignado al profesor autenticado.",
+                    professor=professor,
+                    professor_data=utils.professor_to_dict(professor),
+                    course=None,
+                    entity=None,
+                    data=None,
+                )
 
-            course_record = ProfessorService._course_to_dict(course)
+            course_record = utils.course_to_dict(course)
+            return utils.success_response(
+                "Detalle del curso consultado correctamente.",
+                professor=professor,
+                professor_data=utils.professor_to_dict(professor),
+                course=course_record,
+                entity=course,
+                data=course_record,
+            )
 
-            return {
-                "success": True,
-                "message": "Detalle del curso consultado correctamente.",
-                "professor": professor,
-                "professor_data": ProfessorService._professor_to_dict(professor),
-                "course": course_record,
-                "entity": course,
-                "data": course_record,
-            }
-
-        except ValueError as e:
-            return {
-                "success": False,
-                "message": str(e),
-                "professor": None,
-                "professor_data": None,
-                "course": None,
-                "entity": None,
-                "data": None,
-            }
-
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al consultar el detalle del curso asignado.",
-                "professor": None,
-                "professor_data": None,
-                "course": None,
-                "entity": None,
-                "data": None,
-            }
+        except ValueError as exc:
+            return ProfessorService._empty_course_detail_response(str(exc))
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al consultar el detalle del curso asignado.",
+                professor=None,
+                professor_data=None,
+                course=None,
+                entity=None,
+                data=None,
+            )
 
     @staticmethod
     def search_professors_by_name(name: str) -> dict:
+        """Filtra profesores por nombre."""
         try:
-            name = str(name).strip().lower()
-            if not name:
+            clean_name = str(name or "").strip().lower()
+            if not clean_name:
                 return ProfessorService.get_professors()
 
             result = ProfessorService.get_professors()
@@ -427,59 +331,34 @@ class ProfessorService:
             filtered_professors = [
                 professor
                 for professor in professors
-                if name in str(getattr(professor.user, "name", "")).lower()
+                if clean_name in str(getattr(getattr(professor, "user", None), "name", "")).lower()
             ]
 
-            return {
-                "success": True,
-                "message": "Profesores filtrados correctamente.",
-                "professors": filtered_professors,
-                "data": filtered_professors,
-            }
+            return utils.success_response(
+                "Profesores filtrados correctamente.",
+                professors=filtered_professors,
+                professor_records=[utils.professor_to_dict(professor) for professor in filtered_professors],
+                data=filtered_professors,
+            )
 
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al buscar profesores.",
-                "professors": [],
-                "data": [],
-            }
-
-    @staticmethod
-    def _normalize_payload(data: dict | None, kwargs: dict) -> dict:
-        payload = {}
-        if isinstance(data, dict):
-            payload.update(data)
-        payload.update(kwargs)
-        return payload
-
-    @staticmethod
-    def _normalize_delete_payload(data: dict | str | None, kwargs: dict) -> dict:
-        payload = {}
-
-        if isinstance(data, dict):
-            payload.update(data)
-        elif data not in (None, ""):
-            payload["id_professor"] = data
-
-        payload.update(kwargs)
-        return payload
+        except Exception as exc:
+            return utils.unexpected_error_response(
+                exc,
+                "Ocurrió un error al buscar profesores.",
+                professors=[],
+                data=[],
+            )
 
     @staticmethod
     def _validate_registration_payload(payload: dict) -> dict:
-        id_professor = ProfessorService._read_first(
-            payload,
-            "id_professor",
-            "identification",
-            "document",
-        )
-        name = ProfessorService._read_first(payload, "name", "professor_name")
-        password = ProfessorService._read_first(payload, "password")
-        email = ProfessorService._read_first(payload, "email")
-        birth_date = ProfessorService._read_first(payload, "birth_date", "date_of_birth")
-        nationality = ProfessorService._read_first(payload, "nationality")
-        professional_title = ProfessorService._read_first(
+        """Valida datos de creación de profesor."""
+        id_professor = utils.read_first(payload, "id_professor", "identification", "document")
+        name = utils.read_first(payload, "name", "professor_name")
+        password = utils.read_first(payload, "password")
+        email = utils.read_first(payload, "email")
+        birth_date = utils.read_first(payload, "birth_date", "date_of_birth")
+        nationality = utils.read_first(payload, "nationality")
+        professional_title = utils.read_first(
             payload,
             "professional_title",
             "title",
@@ -487,80 +366,69 @@ class ProfessorService:
             "specialty",
         )
 
-        required_fields = {
-            "identificación": id_professor,
-            "nombre": name,
-            "contraseña": password,
-            "correo electrónico": email,
-            "fecha de nacimiento": birth_date,
-            "nacionalidad": nationality,
-            "título profesional": professional_title,
-        }
-
-        missing = [label for label, value in required_fields.items() if value in (None, "")]
-        if missing:
-            raise ValueError("Campos obligatorios faltantes: " + ", ".join(missing) + ".")
-
-        id_professor = str(id_professor).strip()
-        name = str(name).strip()
-        password = str(password).strip()
-        email = str(email).strip()
-        nationality = str(nationality).strip()
-        professional_title = str(professional_title).strip()
-        birth_date = ProfessorService._parse_date(birth_date)
-
-        if len(id_professor) < 3:
-            raise ValueError("La identificación del profesor debe tener al menos 3 caracteres.")
-
-        if len(name) < 3:
-            raise ValueError("El nombre del profesor debe tener al menos 3 caracteres.")
-
-        if len(password) < 4:
-            raise ValueError("La contraseña inicial debe tener al menos 4 caracteres.")
-
-        if not ProfessorService.EMAIL_PATTERN.match(email):
-            raise ValueError("El correo electrónico no tiene un formato válido.")
-
-        if birth_date > date.today():
-            raise ValueError("La fecha de nacimiento no puede ser posterior a la fecha actual.")
-
-        if len(nationality) < 3:
-            raise ValueError("La nacionalidad debe tener al menos 3 caracteres.")
-
-        if len(professional_title) < 3:
-            raise ValueError("El título profesional debe tener al menos 3 caracteres.")
+        utils.validate_required_fields(
+            {
+                "identificación": id_professor,
+                "nombre": name,
+                "contraseña": password,
+                "correo electrónico": email,
+                "fecha de nacimiento": birth_date,
+                "nacionalidad": nationality,
+                "título profesional": professional_title,
+            }
+        )
 
         return {
-            "id_professor": id_professor,
-            "name": name,
-            "password": password,
-            "email": email,
-            "birth_date": birth_date,
-            "nationality": nationality,
-            "professional_title": professional_title,
+            "id_professor": ProfessorService._validate_id_professor(id_professor),
+            "name": utils.validate_person_name(
+                name,
+                "El nombre del profesor",
+                ProfessorService.MIN_NAME_LENGTH,
+            ),
+            "password": utils.validate_password_required(
+                password,
+                "La contraseña inicial",
+                ProfessorService.MIN_PASSWORD_LENGTH,
+            ),
+            "email": utils.validate_email(email),
+            "birth_date": utils.parse_date(
+                birth_date,
+                "La fecha de nacimiento debe tener formato YYYY-MM-DD.",
+                allow_future=False,
+                future_error_message="La fecha de nacimiento no puede ser posterior a la fecha actual.",
+            ),
+            "nationality": utils.validate_alpha_text(
+                nationality,
+                "La nacionalidad",
+                ProfessorService.MIN_TEXT_LENGTH,
+            ),
+            "professional_title": utils.validate_alpha_text(
+                professional_title,
+                "El título profesional",
+                ProfessorService.MIN_TEXT_LENGTH,
+            ),
         }
 
     @staticmethod
     def _validate_update_payload(payload: dict) -> dict:
-        current_id_professor = ProfessorService._read_first(
+        """Valida payload de actualización de profesor."""
+        current_id_professor = utils.read_first(
             payload,
             "current_id_professor",
             "original_id_professor",
             "old_id_professor",
             "selected_id_professor",
         )
-        id_professor = ProfessorService._read_first(
-            payload,
-            "id_professor",
-            "identification",
-            "document",
+        id_professor = (
+            utils.read_first(payload, "id_professor", "identification", "document")
+            or current_id_professor
         )
-        name = ProfessorService._read_first(payload, "name", "professor_name")
+        name = utils.read_first(payload, "name", "professor_name")
         password = payload.get("password")
-        email = ProfessorService._read_first(payload, "email")
-        birth_date = ProfessorService._read_first(payload, "birth_date", "date_of_birth")
-        nationality = ProfessorService._read_first(payload, "nationality")
-        professional_title = ProfessorService._read_first(
+        email = utils.read_first(payload, "email")
+        birth_date = utils.read_first(payload, "birth_date", "date_of_birth")
+        nationality = utils.read_first(payload, "nationality")
+        professional_title = utils.read_first(
             payload,
             "professional_title",
             "title",
@@ -568,75 +436,56 @@ class ProfessorService:
             "specialty",
         )
 
-        if id_professor in (None, ""):
-            id_professor = current_id_professor
-
-        required_fields = {
-            "identificación actual": current_id_professor,
-            "identificación": id_professor,
-            "nombre": name,
-            "correo electrónico": email,
-            "fecha de nacimiento": birth_date,
-            "nacionalidad": nationality,
-            "título profesional": professional_title,
-        }
-
-        missing = [label for label, value in required_fields.items() if value in (None, "")]
-        if missing:
-            raise ValueError("Campos obligatorios faltantes: " + ", ".join(missing) + ".")
-
-        current_id_professor = str(current_id_professor).strip()
-        id_professor = str(id_professor).strip()
-        name = str(name).strip()
-        email = str(email).strip()
-        nationality = str(nationality).strip()
-        professional_title = str(professional_title).strip()
-        birth_date = ProfessorService._parse_date(birth_date)
-
-        clean_password = None
-        if password not in (None, ""):
-            clean_password = str(password).strip()
-            if clean_password == "":
-                clean_password = None
-
-        if len(current_id_professor) < 3:
-            raise ValueError("La identificación actual del profesor debe tener al menos 3 caracteres.")
-
-        if len(id_professor) < 3:
-            raise ValueError("La identificación del profesor debe tener al menos 3 caracteres.")
-
-        if len(name) < 3:
-            raise ValueError("El nombre del profesor debe tener al menos 3 caracteres.")
-
-        if clean_password is not None and len(clean_password) < 4:
-            raise ValueError("La contraseña debe tener al menos 4 caracteres.")
-
-        if not ProfessorService.EMAIL_PATTERN.match(email):
-            raise ValueError("El correo electrónico no tiene un formato válido.")
-
-        if birth_date > date.today():
-            raise ValueError("La fecha de nacimiento no puede ser posterior a la fecha actual.")
-
-        if len(nationality) < 3:
-            raise ValueError("La nacionalidad debe tener al menos 3 caracteres.")
-
-        if len(professional_title) < 3:
-            raise ValueError("El título profesional debe tener al menos 3 caracteres.")
+        utils.validate_required_fields(
+            {
+                "identificación actual": current_id_professor,
+                "identificación": id_professor,
+                "nombre": name,
+                "correo electrónico": email,
+                "fecha de nacimiento": birth_date,
+                "nacionalidad": nationality,
+                "título profesional": professional_title,
+            }
+        )
 
         return {
-            "current_id_professor": current_id_professor,
-            "id_professor": id_professor,
-            "name": name,
-            "password": clean_password,
-            "email": email,
-            "birth_date": birth_date,
-            "nationality": nationality,
-            "professional_title": professional_title,
+            "current_id_professor": ProfessorService._validate_id_professor(
+                current_id_professor,
+                label="La identificación actual del profesor",
+            ),
+            "id_professor": ProfessorService._validate_id_professor(id_professor),
+            "name": utils.validate_person_name(
+                name,
+                "El nombre del profesor",
+                ProfessorService.MIN_NAME_LENGTH,
+            ),
+            "password": utils.clean_optional_password(
+                password,
+                ProfessorService.MIN_PASSWORD_LENGTH,
+            ),
+            "email": utils.validate_email(email),
+            "birth_date": utils.parse_date(
+                birth_date,
+                "La fecha de nacimiento debe tener formato YYYY-MM-DD.",
+                allow_future=False,
+                future_error_message="La fecha de nacimiento no puede ser posterior a la fecha actual.",
+            ),
+            "nationality": utils.validate_alpha_text(
+                nationality,
+                "La nacionalidad",
+                ProfessorService.MIN_TEXT_LENGTH,
+            ),
+            "professional_title": utils.validate_alpha_text(
+                professional_title,
+                "El título profesional",
+                ProfessorService.MIN_TEXT_LENGTH,
+            ),
         }
 
     @staticmethod
     def _validate_delete_payload(payload: dict) -> str:
-        id_professor = ProfessorService._read_first(
+        """Valida identificación requerida para eliminación."""
+        id_professor = utils.read_first(
             payload,
             "id_professor",
             "current_id_professor",
@@ -644,119 +493,54 @@ class ProfessorService:
             "identification",
             "document",
         )
-
-        if id_professor in (None, ""):
-            raise ValueError("La identificación del profesor es obligatoria para eliminar el registro.")
-
-        id_professor = str(id_professor).strip()
-
-        if not id_professor:
-            raise ValueError("La identificación del profesor es obligatoria para eliminar el registro.")
-
-        if len(id_professor) < 3:
-            raise ValueError("La identificación del profesor debe tener al menos 3 caracteres.")
-
-        return id_professor
+        return ProfessorService._validate_id_professor(id_professor)
 
     @staticmethod
-    def _read_first(payload: dict, *keys):
-        for key in keys:
-            value = payload.get(key)
-            if value not in (None, ""):
-                return value
-        return None
-
-    @staticmethod
-    def _parse_date(value) -> date:
-        if isinstance(value, datetime):
-            return value.date()
-
-        if isinstance(value, date):
-            return value
-
-        value = str(value).strip()
-        for date_format in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-            try:
-                return datetime.strptime(value, date_format).date()
-            except ValueError:
-                pass
-
-        raise ValueError("La fecha de nacimiento debe tener formato YYYY-MM-DD.")
-
-    @staticmethod
-    def _extract_user_id(user=None, id_user: int | str | None = None) -> int:
-        if id_user in (None, ""):
-            if isinstance(user, dict):
-                id_user = ProfessorService._read_first(user, "id_user", "user_id")
-            elif hasattr(user, "id_user"):
-                id_user = getattr(user, "id_user")
-            else:
-                id_user = user
-
-        if id_user in (None, ""):
-            raise ValueError("El usuario autenticado es obligatorio.")
-
-        try:
-            return int(id_user)
-        except (TypeError, ValueError):
-            raise ValueError("El identificador del usuario autenticado no es válido.")
-
+    def _validate_id_professor(
+        id_professor,
+        label: str = "La identificación del profesor",
+    ) -> str:
+        """Normaliza y valida que la identificación del profesor sea numérica."""
+        return utils.validate_numeric_id(
+            id_professor,
+            field_label=label,
+            min_length=ProfessorService.MIN_ID_LENGTH,
+        )
+        
     @staticmethod
     def _user_has_professor_role(user) -> bool:
-        if user is None:
-            return True
-
-        role = user.get("role") if isinstance(user, dict) else getattr(user, "role", None)
-        if role is None:
-            return True
-
-        role_name = str(getattr(role, "name", "")).upper()
-        role_value = str(getattr(role, "value", role)).lower()
-
-        return role_name == "PROFESSOR" or role_value == "professor"
+        """Valida rol de profesor permitiendo compatibilidad cuando no se envía usuario."""
+        return utils.role_matches(user, {"professor"}, allow_missing=True)
 
     @staticmethod
-    def _professor_to_dict(professor) -> dict:
-        user = getattr(professor, "user", None)
-
-        return {
-            "id_professor": getattr(professor, "id_professor", ""),
-            "professional_title": getattr(professor, "professional_title", ""),
-            "id_user": getattr(user, "id_user", ""),
-            "name": getattr(user, "name", ""),
-            "email": getattr(user, "email", ""),
-            "birth_date": getattr(user, "birth_date", ""),
-            "nationality": getattr(user, "nationality", ""),
-        }
+    def _empty_assigned_courses_response(message: str) -> dict:
+        return utils.error_response(
+            message,
+            professor=None,
+            professor_data=None,
+            courses=[],
+            entities=[],
+            data=[],
+        )
 
     @staticmethod
-    def _course_to_dict(course) -> dict:
-        professor = getattr(course, "professor", None)
-        professor_user = getattr(professor, "user", None)
+    def _empty_course_detail_response(message: str) -> dict:
+        return utils.error_response(
+            message,
+            professor=None,
+            professor_data=None,
+            course=None,
+            entity=None,
+            data=None,
+        )
 
-        professor_data = {
-            "id_professor": getattr(professor, "id_professor", ""),
-            "name": getattr(professor_user, "name", ""),
-            "email": getattr(professor_user, "email", ""),
-            "professional_title": getattr(professor, "professional_title", ""),
-        }
-
-        return {
-            "code_course": getattr(course, "code_course", ""),
-            "name": getattr(course, "name", ""),
-            "description": getattr(course, "description", ""),
-            "price": getattr(course, "price", 0),
-            "duration_days": getattr(course, "duration_days", 0),
-            "intensity_hours": getattr(course, "intensity_hours", 0),
-            "schedule": getattr(course, "schedule", ""),
-            "location": getattr(course, "location", ""),
-            "start_date": getattr(course, "start_date", ""),
-            "end_date": getattr(course, "end_date", ""),
-            "id_professor": professor_data["id_professor"],
-            "professor": professor_data,
-            "students": getattr(course, "enrolled_students", 0),
-            "enrolled_students": getattr(course, "enrolled_students", 0),
-        }
+    _normalize_payload = staticmethod(utils.normalize_payload)
+    _normalize_delete_payload = staticmethod(utils.normalize_delete_payload)
+    _read_first = staticmethod(utils.read_first)
+    _parse_date = staticmethod(utils.parse_date)
+    _extract_user_id = staticmethod(utils.extract_user_id)
+    _professor_to_dict = staticmethod(utils.professor_to_dict)
+    _course_to_dict = staticmethod(utils.course_to_dict)
 
     create_professor = register_professor
     add_professor = register_professor

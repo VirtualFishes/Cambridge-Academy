@@ -1,3 +1,7 @@
+"""Tarjeta visual de curso para el submódulo student_view.
+
+El componente muestra información resumida del curso y expone una acción de consulta sin ejecutar reglas de negocio."""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -9,6 +13,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
 )
+
+from ca_program.views.student_view.student_view_utils import format_price, read_mapping_value, clean_text
 
 
 class CourseCardWidget(QFrame):
@@ -123,13 +129,13 @@ class CourseCardWidget(QFrame):
             self.on_action(self.course)
 
     def _get_course_name(self) -> str:
-        name = str(self.course.get("name", "")).strip()
-        return name or "Curso sin nombre"
+        """Obtiene el nombre visible del curso."""
+        return clean_text(read_mapping_value(self.course, "name", default=""), "Curso sin nombre")
 
     def _get_professor_name(self) -> str:
+        """Obtiene el nombre del profesor asignado sin exponer valores vacíos."""
         professor = self.course.get("professor") or {}
-        professor_name = str(professor.get("name", "")).strip()
-        return professor_name or "Sin profesor asignado"
+        return clean_text(read_mapping_value(professor, "name", default=""), "Sin profesor asignado")
 
     def _get_tag_object_name(self) -> str:
         normalized = str(self.status_label or "").strip().lower()
@@ -148,13 +154,5 @@ class CourseCardWidget(QFrame):
         return "enrollButton"
 
     def _format_price(self, price) -> str:
-        try:
-            numeric_price = float(price)
-        except (TypeError, ValueError):
-            return "No registrado"
-
-        if numeric_price <= 0:
-            return "No registrado"
-
-        formatted = f"{numeric_price:,.0f}".replace(",", ".")
-        return f"$ {formatted}"
+        """Formatea el precio del curso para la tarjeta."""
+        return format_price(price)

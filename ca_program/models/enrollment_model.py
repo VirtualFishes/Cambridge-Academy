@@ -1,3 +1,10 @@
+"""
+Modelo de persistencia para matrículas.
+
+Centraliza consultas de inscripción, estados de pago y mapeo de entidades relacionadas.
+Los métodos que reciben cursor externo participan en transacciones controladas por servicios.
+"""
+
 from datetime import date
 
 from ca_program.entities.course import Course
@@ -7,6 +14,7 @@ from ca_program.entities.professor import Professor
 from ca_program.entities.student import Student
 from ca_program.entities.user import User
 from database.connection import get_connection
+from ca_program.models.model_utils import require_identifier, require_positive_int
 
 
 class EnrollmentModel:
@@ -25,12 +33,15 @@ class EnrollmentModel:
         No realiza commit ni rollback. En HU-21 esta operación forma parte del
         flujo de inscripción junto con la generación del recibo pendiente.
         """
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
+        clean_code_course = require_identifier(code_course, "Código del curso")
+
         query = """
             INSERT INTO enrollments (id_student, code_course)
             VALUES (%s, %s)
             RETURNING id_enrollment;
         """
-        cursor.execute(query, (id_student, code_course))
+        cursor.execute(query, (clean_id_student, clean_code_course))
         id_enrollment = cursor.fetchone()[0]
 
         enrollment = EnrollmentModel.get_enrollment_by_id(
@@ -51,23 +62,27 @@ class EnrollmentModel:
         Esta operación se usará principalmente cuando un recibo pendiente haya
         vencido y el estudiante quiera intentar nuevamente la inscripción.
         """
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+
         query = """
             DELETE FROM enrollments
             WHERE id_enrollment = %s;
         """
-        cursor.execute(query, (id_enrollment,))
+        cursor.execute(query, (clean_id_enrollment,))
         return cursor.rowcount > 0
 
     @staticmethod
     def get_enrollment_by_id(cursor, id_enrollment: int) -> Enrollment | None:
         """Consulta una matrícula por su identificador con un cursor existente."""
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+
         query = f"""
             {EnrollmentModel._base_enrollment_select_from()}
             WHERE e.id_enrollment = %s
             {EnrollmentModel._base_enrollment_group_by()}
             LIMIT 1;
         """
-        cursor.execute(query, (id_enrollment,))
+        cursor.execute(query, (clean_id_enrollment,))
         result = cursor.fetchone()
 
         if result:
@@ -87,6 +102,9 @@ class EnrollmentModel:
         Retorna matrículas pendientes o pagadas. La capa de servicio decide qué
         hacer según el recibo asociado.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
+        clean_code_course = require_identifier(code_course, "Código del curso")
+
         query = f"""
             {EnrollmentModel._base_enrollment_select_from()}
             WHERE student_user.id_user = %s
@@ -95,7 +113,7 @@ class EnrollmentModel:
             ORDER BY e.id_enrollment DESC
             LIMIT 1;
         """
-        cursor.execute(query, (id_user, code_course))
+        cursor.execute(query, (clean_id_user, clean_code_course))
         result = cursor.fetchone()
 
         if result:
@@ -112,6 +130,7 @@ class EnrollmentModel:
         pagado. Las matrículas con recibo pendiente no se muestran como cursos
         inscritos confirmados.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -122,7 +141,7 @@ class EnrollmentModel:
                 {EnrollmentModel._base_enrollment_group_by()}
                 ORDER BY c.name ASC, e.id_enrollment ASC;
             """
-            cursor.execute(query, (id_user,))
+            cursor.execute(query, (clean_id_user,))
             results = cursor.fetchall()
 
             return [EnrollmentModel._map_enrollment_to_entity(row) for row in results]
@@ -136,6 +155,7 @@ class EnrollmentModel:
         """
         Consulta las matrículas confirmadas asociadas a un estudiante.
         """
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -146,7 +166,7 @@ class EnrollmentModel:
                 {EnrollmentModel._base_enrollment_group_by()}
                 ORDER BY c.name ASC, e.id_enrollment ASC;
             """
-            cursor.execute(query, (id_student,))
+            cursor.execute(query, (clean_id_student,))
             results = cursor.fetchall()
 
             return [EnrollmentModel._map_enrollment_to_entity(row) for row in results]

@@ -1,7 +1,11 @@
+"""Vista administrativa para gestión de cursos."""
+
 from ca_program.views.admin_view.admin_base_manager_gui import AdminCrudWidget, FieldSpec
 
 
 class CourseManagerWidget(AdminCrudWidget):
+    """Configura el CRUD administrativo para cursos."""
+
     def __init__(self, parent=None):
         super().__init__(
             title="Gestión de cursos",

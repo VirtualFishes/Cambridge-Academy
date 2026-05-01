@@ -1,3 +1,7 @@
+"""Vista de cursos disponibles para estudiantes.
+
+Presenta la oferta académica, consulta estados de inscripción y delega las acciones de inscripción o pago al panel principal del estudiante."""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
@@ -15,6 +19,18 @@ from PySide6.QtWidgets import (
 
 from ca_program.services.course_service import CourseService
 from ca_program.services.enrollment_service import EnrollmentService
+from ca_program.views.student_view.student_view_utils import (
+    STATUS_ENROLLED as STUDENT_STATUS_ENROLLED,
+    STATUS_EXPIRED as STUDENT_STATUS_EXPIRED,
+    STATUS_NOT_ENROLLED as STUDENT_STATUS_NOT_ENROLLED,
+    STATUS_PENDING_PAYMENT as STUDENT_STATUS_PENDING_PAYMENT,
+    calculate_card_columns,
+    clear_layout,
+    enrollment_status_label,
+    get_course_code,
+    get_user_id,
+    normalize_enrollment_status,
+)
 
 try:
     from .course_card_widget import CourseCardWidget
@@ -32,10 +48,10 @@ class AvailableCoursesWidget(QWidget):
     el estado de inscripción del estudiante y delega las acciones a StudentGUI.
     """
 
-    STATUS_NOT_ENROLLED = "NO_INSCRITO"
-    STATUS_PENDING_PAYMENT = "PENDIENTE_DE_PAGO"
-    STATUS_ENROLLED = "INSCRITO"
-    STATUS_EXPIRED = "VENCIDO"
+    STATUS_NOT_ENROLLED = STUDENT_STATUS_NOT_ENROLLED
+    STATUS_PENDING_PAYMENT = STUDENT_STATUS_PENDING_PAYMENT
+    STATUS_ENROLLED = STUDENT_STATUS_ENROLLED
+    STATUS_EXPIRED = STUDENT_STATUS_EXPIRED
 
     def __init__(
         self,
@@ -267,22 +283,12 @@ class AvailableCoursesWidget(QWidget):
         }
 
     def _get_status_label(self, course: dict) -> str:
-        status = self._normalize_status(course.get("enrollment_status"))
-
-        if status == self.STATUS_ENROLLED:
-            return "Inscrito"
-        if status == self.STATUS_PENDING_PAYMENT:
-            return "Pendiente de pago"
-        if status == "ESTADO_NO_DISPONIBLE":
-            return "Disponible"
-        return "Disponible"
+        """Retorna la etiqueta visible del estado de inscripción."""
+        return enrollment_status_label(course.get("enrollment_status"))
 
     def _clear_grid(self):
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """Limpia las tarjetas renderizadas antes de reconstruir la cuadrícula."""
+        clear_layout(self.grid_layout)
 
     def _reset_grid_stretches(self):
         rows_to_reset = max(12, (len(self.courses) // 3) + 4)
@@ -310,23 +316,16 @@ class AvailableCoursesWidget(QWidget):
             self.width(),
         )
 
-        if width >= 980:
-            return 3
-        if width >= 650:
-            return 2
-        return 1
+        return calculate_card_columns(width)
 
     def _get_user_id(self):
-        return getattr(self.user, "id_user", None)
+        """Obtiene el usuario autenticado sin asumir una clase concreta."""
+        return get_user_id(self.user)
 
     @staticmethod
     def _get_course_code(course: dict):
-        return (
-            course.get("code_course")
-            or course.get("course_code")
-            or course.get("code")
-            or course.get("id")
-        )
+        """Obtiene el código del curso usando las claves aceptadas por la GUI."""
+        return get_course_code(course)
 
     def _handle_consult_course(self, course: dict):
         if callable(self.on_consult_course):
@@ -354,23 +353,8 @@ class AvailableCoursesWidget(QWidget):
                 card.on_consult = self._handle_consult_course
 
     def _normalize_status(self, status) -> str:
-        status_text = str(status or self.STATUS_NOT_ENROLLED).strip().upper()
-
-        aliases = {
-            "NOT_ENROLLED": self.STATUS_NOT_ENROLLED,
-            "NO INSCRITO": self.STATUS_NOT_ENROLLED,
-            "DISPONIBLE": self.STATUS_NOT_ENROLLED,
-            "PENDING_PAYMENT": self.STATUS_PENDING_PAYMENT,
-            "PENDIENTE": self.STATUS_PENDING_PAYMENT,
-            "PENDIENTE DE PAGO": self.STATUS_PENDING_PAYMENT,
-            "ENROLLED": self.STATUS_ENROLLED,
-            "CONFIRMADO": self.STATUS_ENROLLED,
-            "VENCIDO": self.STATUS_EXPIRED,
-            "EXPIRED": self.STATUS_EXPIRED,
-            "ESTADO_NO_DISPONIBLE": "ESTADO_NO_DISPONIBLE",
-        }
-
-        return aliases.get(status_text, status_text)
+        """Normaliza estados devueltos por servicios o entidades."""
+        return normalize_enrollment_status(status)
 
     def showEvent(self, event):
         super().showEvent(event)

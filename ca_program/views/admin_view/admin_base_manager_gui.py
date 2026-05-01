@@ -1,6 +1,16 @@
+"""Componentes base reutilizables para la gestión administrativa.
+
+Define un widget CRUD genérico usado por las pantallas de estudiantes,
+profesores y cursos. La clase se limita a construir formularios, leer entradas,
+invocar servicios y pintar resultados; no ejecuta SQL ni contiene reglas de
+negocio propias del dominio.
+"""
+
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Callable
+
+from ca_program.views.admin_view.admin_view_utils import build_search_blob, get_nested_value, make_table_item
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
@@ -28,6 +38,7 @@ from PySide6.QtWidgets import (
 
 @dataclass(frozen=True)
 class FieldSpec:
+    """Describe un campo editable del formulario CRUD administrativo."""
     key: str
     label: str
     placeholder: str = ""
@@ -42,10 +53,19 @@ TableColumnSpec = tuple[str, str] | tuple[str, str, int]
 
 
 class ServiceUnavailable(Exception):
+    """Señala que el servicio requerido por la vista no pudo cargarse."""
+
     pass
 
 
 class AdminCrudWidget(QWidget):
+    """Widget CRUD reutilizable para pantallas administrativas simples.
+
+    La clase abstrae formulario, tabla, búsqueda e integración con servicios.
+    La configuración se recibe por constructor para evitar duplicar código entre
+    estudiantes, profesores y cursos.
+    """
+
     def __init__(
         self,
         title: str,
@@ -162,9 +182,9 @@ class AdminCrudWidget(QWidget):
         if self._supports_row_selection():
             self.selection_status_label = QLabel(self._initial_selection_text())
             self.selection_status_label.setObjectName("selectionStatus")
-            #self.selection_status_label.setWordWrap(True)
+            self.selection_status_label.setWordWrap(True)
             self.selection_status_label.setFixedHeight(44)
-            #layout.addWidget(self.selection_status_label)
+            layout.addWidget(self.selection_status_label)
 
         scroll_area = QScrollArea()
         scroll_area.setObjectName("formScrollArea")
@@ -618,12 +638,17 @@ class AdminCrudWidget(QWidget):
         self.apply_filter()
 
     def apply_filter(self):
+        """Filtra la tabla usando las columnas visibles y campos del formulario."""
         text = self.search_input.text().strip().lower()
+        searchable_paths = [self._column_path(column) for column in self.table_columns]
+        searchable_paths.extend(field.key for field in self.fields)
+
         filtered = []
         for row in self.rows:
-            name = str(self._get_value(row, "name") or self._get_value(row, "user.name") or "").lower()
-            if not text or text in name:
+            search_blob = build_search_blob(row, searchable_paths)
+            if not text or text in search_blob:
                 filtered.append(row)
+
         self.filtered_rows = filtered
         self._fill_table(filtered)
 
@@ -637,8 +662,7 @@ class AdminCrudWidget(QWidget):
         for row_index, row in enumerate(rows):
             for col_index, column in enumerate(self.table_columns):
                 value = self._get_value(row, self._column_path(column))
-                item = QTableWidgetItem("" if value is None else str(value))
-                item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                item = make_table_item(value, Qt.AlignVCenter | Qt.AlignLeft)
                 item.setData(Qt.UserRole, row)
                 self.table.setItem(row_index, col_index, item)
         self._apply_column_widths()
@@ -719,24 +743,7 @@ class AdminCrudWidget(QWidget):
         return self._get_value(row, f"user.{field_key}")
 
     def _get_value(self, row: Any, path: str) -> Any:
-        if "|" in path:
-            for option in path.split("|"):
-                value = self._get_value(row, option.strip())
-                if value not in (None, ""):
-                    return value
-            return None
-
-        if isinstance(row, dict):
-            current: Any = row
-            for part in path.split("."):
-                if isinstance(current, dict):
-                    current = current.get(part)
-                else:
-                    current = getattr(current, part, None)
-                if current is None:
-                    return None
-            return current
-
+        """Lee un valor desde dicts, objetos o tuplas usadas por servicios legacy."""
         if isinstance(row, (list, tuple)):
             keys = [field.key for field in self.fields]
             if path in keys:
@@ -745,12 +752,7 @@ class AdminCrudWidget(QWidget):
                     return row[index]
             return None
 
-        current = row
-        for part in path.split("."):
-            current = getattr(current, part, None)
-            if current is None:
-                return None
-        return current
+        return get_nested_value(row, path)
 
     def clear_form(self):
         self._loading_form = True
@@ -825,13 +827,13 @@ class AdminCrudWidget(QWidget):
         parts: list[str] = []
 
         if self._supports_update():
-            parts.append("Edita los campos necesarios y guarda los cambios.")
+            parts.append("Editar | Guardar | ")
 
         if self._supports_delete():
-            parts.append("También puedes eliminar el registro si corresponde.")
+            parts.append("Eliminar | ")
 
         if self._has_password_field():
-            parts.append("La contraseña puede quedar vacía para conservar la actual.")
+            parts.append("Cambiar contraseña ")
 
         return " ".join(parts) if parts else "Registro seleccionado."
 

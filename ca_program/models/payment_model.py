@@ -1,9 +1,17 @@
+"""
+Modelo de persistencia para pagos.
+
+Administra creación, consulta y resumen de pagos asociados a recibos. Las operaciones
+que reciben cursor externo forman parte de transacciones controladas por servicios.
+"""
+
 from datetime import date
 
 from ca_program.entities.fixed_values import PaymentMethod
 from ca_program.entities.payment import Payment
 from ca_program.models.receipt_model import ReceiptModel
 from database.connection import get_connection
+from ca_program.models.model_utils import normalize_enum, require_date, require_positive_int
 
 
 class PaymentModel:
@@ -28,6 +36,8 @@ class PaymentModel:
         Este método no hace commit ni rollback. El pago debe confirmarse desde
         la capa de servicios junto con el cambio de estado del recibo.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+        clean_payment_date = require_date(payment_date, "Fecha de pago")
         method = PaymentModel._normalize_payment_method(payment_method)
 
         query = """
@@ -35,23 +45,28 @@ class PaymentModel:
             VALUES (%s, %s, %s)
             RETURNING id_payment;
         """
-        cursor.execute(query, (payment_date, method.value, id_receipt))
+        cursor.execute(query, (clean_payment_date, method.value, clean_id_receipt))
         id_payment = cursor.fetchone()[0]
 
-        return PaymentModel.get_payment_by_id(cursor, id_payment)
+        payment = PaymentModel.get_payment_by_id(cursor, id_payment)
+        if payment is None:
+            raise ValueError("No fue posible recuperar el pago registrado.")
+        return payment
 
     @staticmethod
     def get_payment_by_id(cursor, id_payment: int) -> Payment | None:
         """
         Consulta un pago por su identificador usando un cursor existente.
         """
+        clean_id_payment = require_positive_int(id_payment, "ID de pago")
+
         query = f"""
             {PaymentModel._base_payment_select_from()}
             WHERE pay.id_payment = %s
             {PaymentModel._base_payment_group_by()}
             LIMIT 1;
         """
-        cursor.execute(query, (id_payment,))
+        cursor.execute(query, (clean_id_payment,))
         result = cursor.fetchone()
 
         if result:
@@ -67,6 +82,7 @@ class PaymentModel:
         Según el diagrama, la relación Payment-Receipt es 1:1. Por eso este
         método retorna un solo pago.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -78,7 +94,7 @@ class PaymentModel:
                 ORDER BY pay.id_payment DESC
                 LIMIT 1;
             """
-            cursor.execute(query, (id_receipt,))
+            cursor.execute(query, (clean_id_receipt,))
             result = cursor.fetchone()
 
             if result:
@@ -97,6 +113,7 @@ class PaymentModel:
 
         HU-22: permite que un estudiante consulte su historial de pagos.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -107,7 +124,7 @@ class PaymentModel:
                 {PaymentModel._base_payment_group_by()}
                 ORDER BY pay.payment_date DESC, pay.id_payment DESC;
             """
-            cursor.execute(query, (id_user,))
+            cursor.execute(query, (clean_id_user,))
             results = cursor.fetchall()
 
             return [PaymentModel._map_payment_to_entity(row) for row in results]
@@ -207,13 +224,15 @@ class PaymentModel:
         """
         Verifica si un recibo ya tiene un pago registrado.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+
         query = """
             SELECT 1
             FROM payments
             WHERE id_receipt = %s
             LIMIT 1;
         """
-        cursor.execute(query, (id_receipt,))
+        cursor.execute(query, (clean_id_receipt,))
         return cursor.fetchone() is not None
 
     @staticmethod
@@ -335,10 +354,8 @@ class PaymentModel:
 
     @staticmethod
     def _normalize_payment_method(payment_method: PaymentMethod | str) -> PaymentMethod:
-        if isinstance(payment_method, PaymentMethod):
-            return payment_method
-
-        return PaymentMethod(payment_method)
+        """Normaliza el método de pago antes de persistirlo."""
+        return normalize_enum(payment_method, PaymentMethod, "Método de pago")
 
     @staticmethod
     def _empty_admin_summary() -> dict:

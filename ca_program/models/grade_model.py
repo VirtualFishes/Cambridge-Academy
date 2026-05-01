@@ -1,7 +1,15 @@
+"""
+Modelo de persistencia para notas académicas.
+
+Administra el registro y consulta de calificaciones, manteniendo filtros por curso,
+profesor y matrícula confirmada. La capa service conserva la autorización y el flujo.
+"""
+
 from ca_program.entities.fixed_values import AcademicStatus, ReceiptStatus
 from ca_program.entities.grade import Grade
 from ca_program.models.enrollment_model import EnrollmentModel
 from database.connection import get_connection
+from ca_program.models.model_utils import normalize_enum, require_grade_value, require_identifier, require_positive_int
 
 
 class GradeModel:
@@ -24,6 +32,13 @@ class GradeModel:
         transacción completa para validar profesor, curso, matrícula y notas
         antes de confirmar los cambios.
         """
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+        clean_grade1, clean_grade2, clean_grade3, clean_average = GradeModel._clean_grade_payload(
+            grade1=grade1,
+            grade2=grade2,
+            grade3=grade3,
+            average=average,
+        )
         status_value = GradeModel._status_to_value(status)
 
         query = """
@@ -41,11 +56,11 @@ class GradeModel:
         cursor.execute(
             query,
             (
-                id_enrollment,
-                grade1,
-                grade2,
-                grade3,
-                average,
+                clean_id_enrollment,
+                clean_grade1,
+                clean_grade2,
+                clean_grade3,
+                clean_average,
                 status_value,
             ),
         )
@@ -77,6 +92,13 @@ class GradeModel:
         No realiza commit ni rollback. La capa de servicio debe validar antes
         que la nota pertenezca al curso asignado al profesor autenticado.
         """
+        clean_id_grade = require_positive_int(id_grade, "ID de nota")
+        clean_grade1, clean_grade2, clean_grade3, clean_average = GradeModel._clean_grade_payload(
+            grade1=grade1,
+            grade2=grade2,
+            grade3=grade3,
+            average=average,
+        )
         status_value = GradeModel._status_to_value(status)
 
         query = """
@@ -92,12 +114,12 @@ class GradeModel:
         cursor.execute(
             query,
             (
-                grade1,
-                grade2,
-                grade3,
-                average,
+                clean_grade1,
+                clean_grade2,
+                clean_grade3,
+                clean_average,
                 status_value,
-                id_grade,
+                clean_id_grade,
             ),
         )
 
@@ -106,7 +128,7 @@ class GradeModel:
 
         grade = GradeModel.get_grade_by_id(
             cursor=cursor,
-            id_grade=id_grade,
+            id_grade=clean_id_grade,
         )
 
         if grade is None:
@@ -117,6 +139,8 @@ class GradeModel:
     @staticmethod
     def get_grade_by_id(cursor, id_grade: int) -> Grade | None:
         """Consulta un registro de notas por identificador usando un cursor existente."""
+        clean_id_grade = require_positive_int(id_grade, "ID de nota")
+
         query = f"""
             {GradeModel._base_grade_select_from()}
             WHERE g.id_grade = %s
@@ -129,7 +153,7 @@ class GradeModel:
                 g.status
             LIMIT 1;
         """
-        cursor.execute(query, (id_grade,))
+        cursor.execute(query, (clean_id_grade,))
         result = cursor.fetchone()
 
         if result:
@@ -140,13 +164,14 @@ class GradeModel:
     @staticmethod
     def get_grade_by_enrollment_id(id_enrollment: int) -> Grade | None:
         """Consulta las notas asociadas a una matrícula."""
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return GradeModel.get_grade_by_enrollment_id_with_cursor(
                 cursor=cursor,
-                id_enrollment=id_enrollment,
+                id_enrollment=clean_id_enrollment,
             )
 
         finally:
@@ -156,6 +181,8 @@ class GradeModel:
     @staticmethod
     def get_grade_by_enrollment_id_with_cursor(cursor, id_enrollment: int) -> Grade | None:
         """Consulta las notas asociadas a una matrícula usando un cursor externo."""
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+
         query = f"""
             {GradeModel._base_grade_select_from()}
             WHERE e.id_enrollment = %s
@@ -169,7 +196,7 @@ class GradeModel:
             ORDER BY g.id_grade DESC
             LIMIT 1;
         """
-        cursor.execute(query, (id_enrollment,))
+        cursor.execute(query, (clean_id_enrollment,))
         result = cursor.fetchone()
 
         if result:
@@ -180,13 +207,15 @@ class GradeModel:
     @staticmethod
     def grade_exists_for_enrollment(cursor, id_enrollment: int) -> bool:
         """Verifica si una matrícula ya tiene notas registradas."""
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+
         query = """
             SELECT 1
             FROM grades
             WHERE id_enrollment = %s
             LIMIT 1;
         """
-        cursor.execute(query, (id_enrollment,))
+        cursor.execute(query, (clean_id_enrollment,))
         return cursor.fetchone() is not None
 
     @staticmethod
@@ -200,14 +229,16 @@ class GradeModel:
         El filtro por profesor evita exponer notas de cursos que no pertenecen
         al docente autenticado.
         """
+        clean_code_course = require_identifier(code_course, "Código del curso")
+        clean_id_professor = require_identifier(id_professor, "Identificación del profesor")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return GradeModel.get_grades_by_course_and_professor_id_with_cursor(
                 cursor=cursor,
-                code_course=code_course,
-                id_professor=id_professor,
+                code_course=clean_code_course,
+                id_professor=clean_id_professor,
             )
 
         finally:
@@ -312,13 +343,14 @@ class GradeModel:
         pendientes de calificación también puedan mostrarse en la GUI del
         estudiante como "Pendiente".
         """
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return GradeModel.get_grade_records_by_student_id_with_cursor(
                 cursor=cursor,
-                id_student=id_student,
+                id_student=clean_id_student,
             )
 
         finally:
@@ -490,13 +522,14 @@ class GradeModel:
         recibo pagado, incluyendo cursos pendientes de calificación mediante
         LEFT JOIN sobre grades.
         """
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return GradeModel.get_grade_records_by_student_id_for_admin_with_cursor(
                 cursor=cursor,
-                id_student=id_student,
+                id_student=clean_id_student,
             )
 
         finally:
@@ -659,7 +692,20 @@ class GradeModel:
 
     @staticmethod
     def _status_to_value(status: AcademicStatus | str) -> str:
-        if isinstance(status, AcademicStatus):
-            return status.value
+        """Normaliza el estado académico antes de persistirlo."""
+        return normalize_enum(status, AcademicStatus, "Estado académico").value
 
-        return str(status).strip()
+    @staticmethod
+    def _clean_grade_payload(
+        grade1: float,
+        grade2: float,
+        grade3: float,
+        average: float,
+    ) -> tuple[float, float, float, float]:
+        """Valida la escala de calificaciones antes de insertar o actualizar."""
+        return (
+            require_grade_value(grade1, "Nota 1"),
+            require_grade_value(grade2, "Nota 2"),
+            require_grade_value(grade3, "Nota 3"),
+            require_grade_value(average, "Promedio"),
+        )

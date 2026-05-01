@@ -1,3 +1,9 @@
+"""Diálogo de edición de notas para profesores.
+
+Pertenece a la capa View: solo captura valores y muestra cálculos de apoyo.
+La validación académica definitiva y la persistencia permanecen en GradeService.
+"""
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -13,6 +19,12 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.grade_service import GradeService
+from ca_program.views.professor_view.professor_view_utils import (
+    calculate_average,
+    read_float,
+    read_mapping_value,
+    status_label_from_average,
+)
 
 
 class GradeEditDialog(QDialog):
@@ -230,35 +242,21 @@ class GradeEditDialog(QDialog):
 
     @staticmethod
     def _calculate_average(grade1: float, grade2: float, grade3: float) -> float:
-        return round((float(grade1) + float(grade2) + float(grade3)) / 3, 2)
+        return calculate_average(grade1, grade2, grade3)
 
     @staticmethod
     def _get_status_from_average(average: float) -> str:
-        return "Aprobado" if float(average) >= GradeService.PASSING_GRADE else "Reprobado"
+        return status_label_from_average(average, GradeService.PASSING_GRADE)
 
     @staticmethod
     def _read_value(record: dict, key: str, default: str = "") -> str:
-        if not isinstance(record, dict):
-            return default
-
-        value = record.get(key)
-        if value not in (None, ""):
-            return str(value).strip()
-        return default
+        return read_mapping_value(record, key, default=default)
 
     @staticmethod
     def _read_float(record: dict, key: str, default: float = 0.0) -> float:
         if not isinstance(record, dict):
             return default
-
-        value = record.get(key, default)
-        if isinstance(value, str):
-            value = value.strip().replace(",", ".")
-
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
+        return read_float(record.get(key, default), default)
 
     @staticmethod
     def get_styles() -> str:

@@ -1,3 +1,10 @@
+"""
+Modelo de persistencia para recibos.
+
+Centraliza creación de recibos pendientes, cambios de estado y consultas por estudiante,
+curso o matrícula. Conserva el manejo transaccional fuera cuando recibe cursor externo.
+"""
+
 from datetime import date
 
 from ca_program.entities.course import Course
@@ -8,6 +15,7 @@ from ca_program.entities.receipt import Receipt
 from ca_program.entities.student import Student
 from ca_program.entities.user import User
 from database.connection import get_connection
+from ca_program.models.model_utils import require_date, require_date_order, require_identifier, require_positive_int, require_positive_number
 
 
 class ReceiptModel:
@@ -28,6 +36,12 @@ class ReceiptModel:
         capa de servicios, porque la creación del recibo forma parte del flujo
         completo de inscripción.
         """
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
+        clean_amount = require_positive_number(amount, "Valor del recibo")
+        clean_issue_date = require_date(issue_date, "Fecha de emisión")
+        clean_due_date = require_date(due_date, "Fecha límite")
+        require_date_order(clean_issue_date, clean_due_date, "Fecha de emisión", "Fecha límite")
+
         query = """
             INSERT INTO receipts (issue_date, due_date, id_enrollment, amount, status)
             VALUES (%s, %s, %s, %s, %s)
@@ -36,10 +50,10 @@ class ReceiptModel:
         cursor.execute(
             query,
             (
-                issue_date,
-                due_date,
-                id_enrollment,
-                amount,
+                clean_issue_date,
+                clean_due_date,
+                clean_id_enrollment,
+                clean_amount,
                 ReceiptStatus.PENDING.value,
             ),
         )
@@ -51,13 +65,15 @@ class ReceiptModel:
         """
         Consulta un recibo por su identificador usando un cursor existente.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+
         query = f"""
             {ReceiptModel._base_receipt_select_from()}
             WHERE r.id_receipt = %s
             {ReceiptModel._base_receipt_group_by()}
             LIMIT 1;
         """
-        cursor.execute(query, (id_receipt,))
+        cursor.execute(query, (clean_id_receipt,))
         result = cursor.fetchone()
 
         if result:
@@ -73,6 +89,7 @@ class ReceiptModel:
         Según el diagrama, la relación Receipt-Enrollment es 1:1. Por eso este
         método retorna un solo recibo.
         """
+        clean_id_enrollment = require_positive_int(id_enrollment, "ID de matrícula")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -84,7 +101,7 @@ class ReceiptModel:
                 ORDER BY r.id_receipt DESC
                 LIMIT 1;
             """
-            cursor.execute(query, (id_enrollment,))
+            cursor.execute(query, (clean_id_enrollment,))
             result = cursor.fetchone()
 
             if result:
@@ -105,6 +122,9 @@ class ReceiptModel:
         """
         Consulta el recibo de un usuario estudiante para un curso específico.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
+        clean_code_course = require_identifier(code_course, "Código del curso")
+
         query = f"""
             {ReceiptModel._base_receipt_select_from()}
             WHERE student_user.id_user = %s
@@ -113,7 +133,7 @@ class ReceiptModel:
             ORDER BY r.id_receipt DESC
             LIMIT 1;
         """
-        cursor.execute(query, (id_user, code_course))
+        cursor.execute(query, (clean_id_user, clean_code_course))
         result = cursor.fetchone()
 
         if result:
@@ -160,6 +180,7 @@ class ReceiptModel:
 
         Este método queda preparado para HU-22: consultar historial de pagos.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -170,7 +191,7 @@ class ReceiptModel:
                 {ReceiptModel._base_receipt_group_by()}
                 ORDER BY r.issue_date DESC, r.id_receipt DESC;
             """
-            cursor.execute(query, (id_user,))
+            cursor.execute(query, (clean_id_user,))
             results = cursor.fetchall()
 
             return [ReceiptModel._map_receipt_to_entity(row) for row in results]
@@ -184,13 +205,15 @@ class ReceiptModel:
         """
         Marca un recibo como pagado dentro de una transacción externa.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+
         query = """
             UPDATE receipts
             SET status = %s
             WHERE id_receipt = %s
             RETURNING id_receipt;
         """
-        cursor.execute(query, (ReceiptStatus.PAID.value, id_receipt))
+        cursor.execute(query, (ReceiptStatus.PAID.value, clean_id_receipt))
         result = cursor.fetchone()
 
         if not result:
@@ -203,13 +226,15 @@ class ReceiptModel:
         """
         Marca un recibo como vencido dentro de una transacción externa.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+
         query = """
             UPDATE receipts
             SET status = %s
             WHERE id_receipt = %s
             RETURNING id_receipt;
         """
-        cursor.execute(query, (ReceiptStatus.EXPIRED.value, id_receipt))
+        cursor.execute(query, (ReceiptStatus.EXPIRED.value, clean_id_receipt))
         result = cursor.fetchone()
 
         if not result:
@@ -225,11 +250,13 @@ class ReceiptModel:
         Se usará cuando una inscripción pendiente venza y el estudiante quiera
         intentar inscribirse nuevamente en el mismo curso.
         """
+        clean_id_receipt = require_positive_int(id_receipt, "ID de recibo")
+
         query = """
             DELETE FROM receipts
             WHERE id_receipt = %s;
         """
-        cursor.execute(query, (id_receipt,))
+        cursor.execute(query, (clean_id_receipt,))
         return cursor.rowcount > 0
 
     @staticmethod
@@ -250,6 +277,9 @@ class ReceiptModel:
         code_course: int | str,
         status: ReceiptStatus,
     ) -> Receipt | None:
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
+        clean_code_course = require_identifier(code_course, "Código del curso")
+
         query = f"""
             {ReceiptModel._base_receipt_select_from()}
             WHERE student_user.id_user = %s
@@ -259,7 +289,7 @@ class ReceiptModel:
             ORDER BY r.id_receipt DESC
             LIMIT 1;
         """
-        cursor.execute(query, (id_user, code_course, status.value))
+        cursor.execute(query, (clean_id_user, clean_code_course, status.value))
         result = cursor.fetchone()
 
         if result:

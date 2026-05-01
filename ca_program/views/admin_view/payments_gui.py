@@ -1,3 +1,10 @@
+"""Vista administrativa para consulta de pagos.
+
+La pantalla presenta información financiera de solo lectura. Siempre intenta
+consumir un servicio de pagos si existe y mantiene una ruta de compatibilidad
+para proyectos donde ese servicio aún no se haya creado.
+"""
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -15,6 +22,15 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from ca_program.views.admin_view.admin_view_utils import (
+    configure_table_columns,
+    enum_value,
+    format_currency,
+    format_date,
+    make_table_item,
+    safe_text,
 )
 
 
@@ -172,11 +188,7 @@ class PaymentsGUI(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        header_view = self.table.horizontalHeader()
-        header_view.setSectionResizeMode(QHeaderView.Interactive)
-        header_view.setStretchLastSection(False)
-        for index, (_, _, width) in enumerate(self.COLUMNS):
-            self.table.setColumnWidth(index, width)
+        configure_table_columns(self.table, self.COLUMNS, QHeaderView.Interactive)
 
         table_layout.addLayout(table_header)
         table_layout.addWidget(self.table, 1)
@@ -187,34 +199,14 @@ class PaymentsGUI(QWidget):
         root.addWidget(table_panel, 1)
 
     def load_payments(self):
+        """Carga pagos mediante servicio cuando existe y actualiza tabla/resumen."""
         try:
-            from ca_program.models.payment_model import PaymentModel
-        except Exception as e:
-            print(e)
-            QMessageBox.warning(
-                self,
-                "Pagos no disponibles",
-                "No fue posible cargar el modelo de pagos.",
-            )
-            self.payments = []
-            self._render_table([])
-            self._update_summary(self._empty_summary())
-            return
-
-        try:
-            payment_entities = PaymentModel.get_all_payments()
-            self.payments = [self._payment_entity_to_dict(payment) for payment in payment_entities]
-
-            try:
-                summary = PaymentModel.get_admin_payment_summary()
-            except Exception as summary_error:
-                print(summary_error)
-                summary = self._calculate_summary(self.payments)
-
+            payments, summary = self._fetch_payment_data()
+            self.payments = payments
             self._update_summary(summary)
             self.apply_filters()
-        except Exception as e:
-            print(e)
+        except Exception as exc:
+            print(exc)
             QMessageBox.warning(
                 self,
                 "No fue posible consultar los pagos",
@@ -224,6 +216,57 @@ class PaymentsGUI(QWidget):
             self.filtered_payments = []
             self._update_summary(self._empty_summary())
             self._render_table([])
+
+    def _fetch_payment_data(self) -> tuple[list[dict], dict]:
+        """Obtiene pagos desde PaymentService si está disponible.
+
+        El fallback a PaymentModel conserva compatibilidad con versiones del
+        proyecto que aún no tengan un servicio de pagos formalizado.
+        """
+        service_data = self._try_fetch_payments_from_service()
+        if service_data is not None:
+            return service_data
+
+        from ca_program.models.payment_model import PaymentModel
+
+        payment_entities = PaymentModel.get_all_payments()
+        payments = [self._payment_entity_to_dict(payment) for payment in payment_entities]
+
+        try:
+            summary = PaymentModel.get_admin_payment_summary()
+        except Exception as summary_error:
+            print(summary_error)
+            summary = self._calculate_summary(payments)
+
+        return payments, summary
+
+    def _try_fetch_payments_from_service(self) -> tuple[list[dict], dict] | None:
+        """Intenta consumir un servicio de pagos sin acoplar la vista a su existencia."""
+        try:
+            from ca_program.services.payment_service import PaymentService
+        except Exception:
+            return None
+
+        for method_name in ("get_admin_payments", "get_payments", "list_payments"):
+            method = getattr(PaymentService, method_name, None)
+            if not callable(method):
+                continue
+
+            result = method()
+            if isinstance(result, dict) and result.get("success") is False:
+                raise RuntimeError(result.get("message") or "No fue posible consultar los pagos.")
+
+            if isinstance(result, dict):
+                raw_payments = result.get("payments") or result.get("data") or []
+                payments = [self._normalize_payment_record(payment) for payment in raw_payments]
+                summary = result.get("summary") or self._calculate_summary(payments)
+                return payments, summary
+
+            if isinstance(result, list):
+                payments = [self._normalize_payment_record(payment) for payment in result]
+                return payments, self._calculate_summary(payments)
+
+        return None
 
     def apply_filters(self):
         search_text = self.search_input.text().strip().lower()
@@ -277,12 +320,8 @@ class PaymentsGUI(QWidget):
             }
 
             for column_index, (_, key, _) in enumerate(self.COLUMNS):
-                item = QTableWidgetItem(values.get(key, ""))
-                if key in {"id_payment", "id_receipt", "amount"}:
-                    item.setTextAlignment(Qt.AlignCenter)
-                else:
-                    item.setTextAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-                self.table.setItem(row_index, column_index, item)
+                alignment = Qt.AlignCenter if key in {"id_payment", "id_receipt", "amount"} else Qt.AlignVCenter | Qt.AlignLeft
+                self.table.setItem(row_index, column_index, make_table_item(values.get(key, ""), alignment))
 
         self.table.resizeRowsToContents()
 
@@ -403,28 +442,20 @@ class PaymentsGUI(QWidget):
         return self.STATUS_LABELS.get(str(status_value), self._safe_text(status_value))
 
     def _format_currency(self, value) -> str:
-        try:
-            amount = float(value or 0)
-            return f"$ {amount:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-        except (TypeError, ValueError):
-            return "$ 0,00"
+        """Formatea valores monetarios para la tabla y las tarjetas resumen."""
+        return format_currency(value)
 
     def _format_date(self, value) -> str:
-        if not value:
-            return ""
-        if hasattr(value, "strftime"):
-            return value.strftime("%Y-%m-%d")
-        return str(value)
+        """Formatea fechas de forma segura para la interfaz."""
+        return format_date(value)
 
     def _safe_text(self, value) -> str:
-        if value is None or value == "":
-            return "—"
-        return str(value)
+        """Retorna texto seguro para celdas vacías."""
+        return safe_text(value)
 
     def _enum_value(self, value):
-        if hasattr(value, "value"):
-            return value.value
-        return value
+        """Extrae el valor de Enum sin acoplar la vista al tipo concreto."""
+        return enum_value(value)
 
     def _get_local_styles(self) -> str:
         return """

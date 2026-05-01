@@ -1,3 +1,9 @@
+"""Panel inicial del módulo administrativo.
+
+Presenta accesos rápidos a las secciones principales sin consultar servicios ni
+manipular datos. La navegación se delega al contenedor AdminGUI.
+"""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt
@@ -13,12 +19,15 @@ from PySide6.QtWidgets import (
 
 
 class AdminDashboardWidget(QWidget):
+    """Pantalla de bienvenida con accesos a las secciones administrativas."""
+
     def __init__(self, navigate: Callable[[str], None] | None = None, parent=None):
         super().__init__(parent)
         self.navigate = navigate
         self._build_ui()
 
     def _build_ui(self):
+        """Construye el contenido visual del tablero administrativo."""
         root = QVBoxLayout(self)
         root.setContentsMargins(28, 24, 28, 24)
         root.setSpacing(18)
@@ -62,7 +71,7 @@ class AdminDashboardWidget(QWidget):
             (
                 "Pagos",
                 "Control financiero",
-                "Consulta los pagos realizados por los estudiantes y revisa el control financiero de las inscripciones.",
+                "Consulta los pagos realizados por los estudiantes y revisa el control financiero.",
                 "payments",
             ),
             (

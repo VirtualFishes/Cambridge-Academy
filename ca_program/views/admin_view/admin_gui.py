@@ -1,3 +1,10 @@
+"""Ventana principal del panel administrativo.
+
+Centraliza la navegación entre vistas administrativas, el cierre de sesión y el
+acceso al cambio de contraseña. No accede directamente a modelos ni base de
+datos.
+"""
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -21,9 +28,12 @@ from ca_program.views.admin_view.student_manager_gui import StudentManagerWidget
 from ca_program.views.admin_view.payments_gui import PaymentsGUI
 from ca_program.services.account_service import AccountService
 from ca_program.views.change_password_dialog import ChangePasswordDialog
+from ca_program.views.admin_view.admin_view_utils import user_display_name
 
 
 class AdminGUI(QMainWindow):
+    """Contenedor principal de las vistas administrativas."""
+
     def __init__(self, user=None):
         super().__init__()
         self.user = user
@@ -85,7 +95,7 @@ class AdminGUI(QMainWindow):
         title.setObjectName("sidebarTitle")
         title.setAlignment(Qt.AlignCenter)
 
-        user_name = getattr(self.user, "name", "Administrador")
+        user_name = user_display_name(self.user, "Administrador")
         subtitle = QLabel(user_name)
         subtitle.setObjectName("sidebarSubtitle")
         subtitle.setAlignment(Qt.AlignCenter)
@@ -129,6 +139,7 @@ class AdminGUI(QMainWindow):
         layout.addWidget(button)
 
     def change_view(self, view_name: str):
+        """Muestra una vista registrada y actualiza el estado de navegación."""
         view = self.views.get(view_name)
         if view is None:
             return
@@ -186,6 +197,7 @@ class AdminGUI(QMainWindow):
             )
 
     def logout(self):
+        """Cierra el panel administrativo y vuelve al inicio de sesión."""
         from ca_program.views.login_gui import LoginGUI
 
         self.login_window = LoginGUI()
@@ -385,6 +397,21 @@ class AdminGUI(QMainWindow):
 
         QPushButton#secondaryButton:hover {
             background-color: #dbeafe;
+        }
+
+        QLabel#selectionStatus {
+            background-color: #eff6ff;
+            color: #1e3a8a;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            padding: 8px 10px;
+            font-weight: 700;
+        }
+
+        QLabel#selectionStatus[state="selected"] {
+            background-color: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
         }
 
         QTableWidget {

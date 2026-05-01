@@ -1,3 +1,9 @@
+"""Vista de detalle de curso asignado al profesor.
+
+Presenta información académica en modo lectura y actúa como punto de navegación
+hacia registro y consulta de notas.
+"""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -11,6 +17,14 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+)
+
+from ca_program.views.professor_view.professor_view_utils import (
+    clear_layout,
+    format_date,
+    format_price,
+    format_unit_count,
+    read_mapping_value,
 )
 
 
@@ -358,105 +372,39 @@ class ProfessorCourseDetailWidget(QWidget):
             self.scroll_area.horizontalScrollBar().setValue(0)
 
     def _read(self, *keys: str, default: str = ""):
-        for key in keys:
-            value = self.course.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-        return default
+        return read_mapping_value(self.course, *keys, default=default)
 
     @staticmethod
     def _read_nested(data: dict, *keys: str, default: str = ""):
-        for key in keys:
-            value = data.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-        return default
+        return read_mapping_value(data, *keys, default=default)
 
     @staticmethod
     def _format_price(value) -> str:
-        try:
-            amount = float(value)
-        except (TypeError, ValueError):
-            return "No registrado"
-
-        if amount <= 0:
-            return "No registrado"
-
-        return f"${amount:,.2f}"
+        return format_price(value, default="No registrado")
 
     @staticmethod
     def _format_days(value) -> str:
-        try:
-            days = int(float(value))
-        except (TypeError, ValueError):
-            return "No registrada"
-
-        if days <= 0:
-            return "No registrada"
-
-        unit = "día" if days == 1 else "días"
-        return f"{days} {unit}"
+        return format_unit_count(value, "día", "días", default="No registrada")
 
     @staticmethod
     def _format_hours(value) -> str:
-        try:
-            hours = float(value)
-        except (TypeError, ValueError):
-            return "No registrada"
-
-        if hours <= 0:
-            return "No registrada"
-
-        if hours.is_integer():
-            hours = int(hours)
-
-        unit = "hora" if hours == 1 else "horas"
-        return f"{hours} {unit}"
+        return format_unit_count(value, "hora", "horas", default="No registrada")
 
     @staticmethod
     def _format_students(value) -> str:
-        try:
-            students = int(float(value))
-        except (TypeError, ValueError):
-            students = 0
-
-        unit = "estudiante" if students == 1 else "estudiantes"
-        return f"{students} {unit}"
+        return format_unit_count(value, "estudiante", "estudiantes", default="0 estudiantes")
 
     @staticmethod
     def _format_date(value) -> str:
-        text = str(value or "").strip()
-        return text or "No registrada"
+        return format_date(value, default="No registrada")
 
     @staticmethod
     def _clear_layout(layout):
-        if layout is None:
-            return
-
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            child_layout = item.layout()
-
-            if widget is not None:
-                widget.deleteLater()
-            elif child_layout is not None:
-                ProfessorCourseDetailWidget._clear_layout(child_layout)
+        clear_layout(layout)
 
     @staticmethod
     def _clear_grid(grid: QGridLayout | None):
-        if grid is None:
-            return
-
-        while grid.count():
-            item = grid.takeAt(0)
-            widget = item.widget()
-            child_layout = item.layout()
-
-            if widget is not None:
-                widget.deleteLater()
-            elif child_layout is not None:
-                ProfessorCourseDetailWidget._clear_layout(child_layout)
+        clear_layout(grid)
 
     @staticmethod
     def get_styles() -> str:

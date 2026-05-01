@@ -1,7 +1,11 @@
+"""Vista administrativa para gestión de estudiantes."""
+
 from ca_program.views.admin_view.admin_base_manager_gui import AdminCrudWidget, FieldSpec
 
 
 class StudentManagerWidget(AdminCrudWidget):
+    """Configura el CRUD administrativo para estudiantes."""
+
     def __init__(self, parent=None):
         super().__init__(
             title="Gestión de estudiantes",

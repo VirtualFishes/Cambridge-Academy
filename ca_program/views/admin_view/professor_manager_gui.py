@@ -1,7 +1,11 @@
+"""Vista administrativa para gestión de profesores."""
+
 from ca_program.views.admin_view.admin_base_manager_gui import AdminCrudWidget, FieldSpec
 
 
 class ProfessorManagerWidget(AdminCrudWidget):
+    """Configura el CRUD administrativo para profesores."""
+
     def __init__(self, parent=None):
         super().__init__(
             title="Gestión de profesores",

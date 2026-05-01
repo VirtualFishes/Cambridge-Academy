@@ -1,3 +1,9 @@
+"""Vista de registro inicial de notas para profesores.
+
+Permite capturar calificaciones de matrículas confirmadas, sin asumir lógica de
+persistencia ni permisos dentro de la interfaz gráfica.
+"""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
@@ -18,6 +24,13 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.grade_service import GradeService
+from ca_program.views.professor_view.professor_view_utils import (
+    calculate_average,
+    normalize_status_label,
+    read_float,
+    read_mapping_value,
+    status_label_from_average,
+)
 
 
 class GradeRegistrationWidget(QWidget):
@@ -389,36 +402,17 @@ class GradeRegistrationWidget(QWidget):
         return self._read_course("code_course", "course_code", "code", default="").strip()
 
     def _read_course(self, *keys: str, default: str = "") -> str:
-        if not isinstance(self.course, dict):
-            return default
-
-        for key in keys:
-            value = self.course.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-        return default
+        return read_mapping_value(self.course, *keys, default=default)
 
     @staticmethod
     def _read_nested(data: dict, *keys: str, default: str = "") -> str:
-        if not isinstance(data, dict):
-            return default
-
-        for key in keys:
-            value = data.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-        return default
+        return read_mapping_value(data, *keys, default=default)
 
     @staticmethod
     def _read_grade_value(grade: dict | None, key: str, default: float = 0.0) -> float:
         if not isinstance(grade, dict):
             return default
-
-        value = grade.get(key, default)
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return default
+        return read_float(grade.get(key, default), default)
 
     @staticmethod
     def _create_grade_spinbox(value: float = 0.0, enabled: bool = True) -> QDoubleSpinBox:
@@ -436,20 +430,15 @@ class GradeRegistrationWidget(QWidget):
 
     @staticmethod
     def _calculate_average_from_values(grade1: float, grade2: float, grade3: float) -> float:
-        return round((float(grade1) + float(grade2) + float(grade3)) / 3, 2)
+        return calculate_average(grade1, grade2, grade3)
 
     @staticmethod
     def _get_status_from_average(average: float) -> str:
-        return "Aprobado" if float(average) >= GradeService.PASSING_GRADE else "Reprobado"
+        return status_label_from_average(average, GradeService.PASSING_GRADE)
 
     @staticmethod
     def _format_status(status) -> str:
-        clean_status = str(status or "").strip().lower()
-        if clean_status in ("passed", "pass", "aprobado", "academicstatus.passed"):
-            return "Aprobado"
-        if clean_status in ("failed", "fail", "reprobado", "academicstatus.failed"):
-            return "Reprobado"
-        return clean_status.capitalize() if clean_status else "No registrado"
+        return normalize_status_label(status, default="No registrado")
 
     def _set_text_item(self, row: int, column: int, text, align=Qt.AlignVCenter | Qt.AlignLeft):
         item = QTableWidgetItem(str(text if text not in (None, "") else "No registrado"))

@@ -1,3 +1,7 @@
+"""Vista de detalle de curso para estudiantes.
+
+Muestra información académica, profesor asignado y estado de inscripción sin acceder directamente a modelos ni base de datos."""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -13,6 +17,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ca_program.views.student_view.student_view_utils import (
+    STATUS_ENROLLED as STUDENT_STATUS_ENROLLED,
+    STATUS_EXPIRED as STUDENT_STATUS_EXPIRED,
+    STATUS_NOT_ENROLLED as STUDENT_STATUS_NOT_ENROLLED,
+    STATUS_PENDING_PAYMENT as STUDENT_STATUS_PENDING_PAYMENT,
+    clear_layout,
+    format_date,
+    format_price,
+    format_unit_count,
+    get_course_code,
+    normalize_enrollment_status,
+    read_mapping_value,
+    read_object_value,
+)
+
 
 class CourseDetailWidget(QWidget):
     """Vista de consulta detallada para un curso.
@@ -22,10 +41,10 @@ class CourseDetailWidget(QWidget):
     contextual para inscribirse o pagar el recibo pendiente cuando corresponda.
     """
 
-    STATUS_NOT_ENROLLED = "NO_INSCRITO"
-    STATUS_PENDING_PAYMENT = "PENDIENTE_DE_PAGO"
-    STATUS_ENROLLED = "INSCRITO"
-    STATUS_EXPIRED = "VENCIDO"
+    STATUS_NOT_ENROLLED = STUDENT_STATUS_NOT_ENROLLED
+    STATUS_PENDING_PAYMENT = STUDENT_STATUS_PENDING_PAYMENT
+    STATUS_ENROLLED = STUDENT_STATUS_ENROLLED
+    STATUS_EXPIRED = STUDENT_STATUS_EXPIRED
 
     back_requested = Signal()
 
@@ -440,94 +459,36 @@ class CourseDetailWidget(QWidget):
         return "courseStatusBanner"
 
     def _normalize_status(self, status) -> str:
-        status_text = str(status or self.STATUS_NOT_ENROLLED).strip().upper()
-
-        aliases = {
-            "NOT_ENROLLED": self.STATUS_NOT_ENROLLED,
-            "NO INSCRITO": self.STATUS_NOT_ENROLLED,
-            "DISPONIBLE": self.STATUS_NOT_ENROLLED,
-            "PENDING_PAYMENT": self.STATUS_PENDING_PAYMENT,
-            "PENDIENTE": self.STATUS_PENDING_PAYMENT,
-            "PENDIENTE DE PAGO": self.STATUS_PENDING_PAYMENT,
-            "ENROLLED": self.STATUS_ENROLLED,
-            "CONFIRMADO": self.STATUS_ENROLLED,
-            "VENCIDO": self.STATUS_EXPIRED,
-            "EXPIRED": self.STATUS_EXPIRED,
-            "ESTADO_NO_DISPONIBLE": "ESTADO_NO_DISPONIBLE",
-        }
-
-        return aliases.get(status_text, status_text)
+        """Normaliza estados de inscripción provenientes del servicio."""
+        return normalize_enrollment_status(status)
 
     def _format_price(self, price) -> str:
-        try:
-            numeric_price = float(price)
-        except (TypeError, ValueError):
-            return "No registrado"
-
-        if numeric_price <= 0:
-            return "No registrado"
-
-        formatted = f"{numeric_price:,.0f}".replace(",", ".")
-        return f"$ {formatted}"
+        """Formatea valores monetarios para el detalle del curso."""
+        return format_price(price)
 
     def _format_days(self, days) -> str:
-        try:
-            numeric_days = int(days)
-        except (TypeError, ValueError):
-            return "No registrada"
-
-        if numeric_days <= 0:
-            return "No registrada"
-
-        return f"{numeric_days} día" if numeric_days == 1 else f"{numeric_days} días"
+        """Formatea duración en días."""
+        return format_unit_count(days, "día", "días")
 
     def _format_hours(self, hours) -> str:
-        try:
-            numeric_hours = int(hours)
-        except (TypeError, ValueError):
-            return "No registrada"
-
-        if numeric_hours <= 0:
-            return "No registrada"
-
-        return f"{numeric_hours} hora" if numeric_hours == 1 else f"{numeric_hours} horas"
+        """Formatea intensidad horaria."""
+        return format_unit_count(hours, "hora", "horas")
 
     def _format_students(self, students) -> str:
-        try:
-            numeric_students = int(students)
-        except (TypeError, ValueError):
-            return "No registrado"
-
-        return f"{numeric_students} estudiante" if numeric_students == 1 else f"{numeric_students} estudiantes"
+        """Formatea la cantidad de estudiantes inscritos."""
+        return format_unit_count(students, "estudiante", "estudiantes", default="No registrado")
 
     def _format_date(self, value) -> str:
-        if value in (None, ""):
-            return "No registrada"
-
-        if hasattr(value, "strftime"):
-            return value.strftime("%d/%m/%Y")
-
-        return str(value).strip()
+        """Formatea fechas académicas."""
+        return format_date(value)
 
     def _clear_grid(self, grid: QGridLayout | None):
-        if grid is None:
-            return
-
-        while grid.count():
-            item = grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """Limpia una cuadrícula de bloques de información."""
+        clear_layout(grid)
 
     def _clear_layout(self, layout: QHBoxLayout | QVBoxLayout | None):
-        if layout is None:
-            return
-
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """Limpia un layout de métricas reutilizando el helper del submódulo."""
+        clear_layout(layout)
 
     def get_styles(self) -> str:
         return """

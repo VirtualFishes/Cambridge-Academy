@@ -1,12 +1,16 @@
+"""
+Servicio de cuenta de usuario.
+
+Centraliza operaciones del usuario autenticado que no pertenecen a una entidad
+académica concreta. Actualmente soporta HU-30: cambio de contraseña.
+"""
+
 from ca_program.models.user_model import UserModel
+from ca_program.services.service_utils import error_response, success_response, unexpected_error_response
 
 
 class AccountService:
-    """
-    Servicio encargado de las operaciones de cuenta del usuario autenticado.
-
-    HU-30: Cambiar contraseña.
-    """
+    """Servicio encargado de operaciones privadas de la cuenta autenticada."""
 
     MIN_PASSWORD_LENGTH = 4
 
@@ -15,100 +19,75 @@ class AccountService:
         id_user: int,
         current_password: str,
         new_password: str,
-        confirm_password: str
+        confirm_password: str,
     ) -> dict:
         """
         Cambia la contraseña del usuario autenticado.
 
-        Retorna un diccionario con:
-        - success: bool
-        - message: str
+        La validación se hace antes de persistir cambios para evitar estados
+        inválidos. La comparación contra la contraseña actual se delega al
+        UserModel, conservando la separación entre servicio y modelo.
         """
         try:
-            current_password = (current_password or "").strip()
-            new_password = (new_password or "").strip()
-            confirm_password = (confirm_password or "").strip()
+            clean_current_password = AccountService._clean_password(current_password)
+            clean_new_password = AccountService._clean_password(new_password)
+            clean_confirm_password = AccountService._clean_password(confirm_password)
 
             validation = AccountService._validate_password_input(
-                current_password=current_password,
-                new_password=new_password,
-                confirm_password=confirm_password
+                current_password=clean_current_password,
+                new_password=clean_new_password,
+                confirm_password=clean_confirm_password,
             )
-
             if not validation["success"]:
                 return validation
 
             user = UserModel.get_user_by_id(id_user)
-
             if not user:
-                return {
-                    "success": False,
-                    "message": "No se encontró el usuario autenticado."
-                }
+                return error_response("No se encontró el usuario autenticado.")
 
-            if not UserModel.validate_password(user, current_password):
-                return {
-                    "success": False,
-                    "message": "La contraseña actual no es correcta."
-                }
+            if not UserModel.validate_password(user, clean_current_password):
+                return error_response("La contraseña actual no es correcta.")
 
-            if UserModel.validate_password(user, new_password):
-                return {
-                    "success": False,
-                    "message": "La nueva contraseña no puede ser igual a la actual."
-                }
+            if UserModel.validate_password(user, clean_new_password):
+                return error_response("La nueva contraseña no puede ser igual a la actual.")
 
             updated = UserModel.update_password(
                 id_user=id_user,
-                new_password=new_password
+                new_password=clean_new_password,
             )
-
             if not updated:
-                return {
-                    "success": False,
-                    "message": "No fue posible actualizar la contraseña."
-                }
+                return error_response("No fue posible actualizar la contraseña.")
 
-            return {
-                "success": True,
-                "message": "Contraseña actualizada correctamente."
-            }
+            return success_response("Contraseña actualizada correctamente.")
 
-        except Exception as e:
-            print(e)
-            return {
-                "success": False,
-                "message": "Ocurrió un error al cambiar la contraseña."
-            }
+        except Exception as exc:
+            return unexpected_error_response(
+                exc,
+                "Ocurrió un error al cambiar la contraseña.",
+            )
 
     @staticmethod
     def _validate_password_input(
         current_password: str,
         new_password: str,
-        confirm_password: str
+        confirm_password: str,
     ) -> dict:
+        """Valida obligatoriedad, longitud mínima y confirmación de contraseña."""
         if not current_password or not new_password or not confirm_password:
-            return {
-                "success": False,
-                "message": "Todos los campos son obligatorios."
-            }
+            return error_response("Todos los campos son obligatorios.")
 
         if len(new_password) < AccountService.MIN_PASSWORD_LENGTH:
-            return {
-                "success": False,
-                "message": (
-                    "La nueva contraseña debe tener al menos "
-                    f"{AccountService.MIN_PASSWORD_LENGTH} caracteres."
-                )
-            }
+            return error_response(
+                "La nueva contraseña debe tener al menos "
+                f"{AccountService.MIN_PASSWORD_LENGTH} caracteres."
+            )
 
         if new_password != confirm_password:
-            return {
-                "success": False,
-                "message": "La nueva contraseña y su confirmación no coinciden."
-            }
+            return error_response("La nueva contraseña y su confirmación no coinciden.")
 
-        return {
-            "success": True,
-            "message": "Validación correcta."
-        }
+        return success_response("Validación correcta.")
+
+    @staticmethod
+    def _clean_password(value: str | None) -> str:
+        """Normaliza el texto de contraseña recibido desde la interfaz."""
+        return (value or "").strip()

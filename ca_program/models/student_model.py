@@ -1,11 +1,26 @@
+"""
+Modelo de persistencia para estudiantes.
+
+Este componente administra operaciones sobre ``students`` y su usuario asociado
+sin mezclar reglas de presentación. Las transacciones que crean, modifican o
+eliminan estudiantes preservan la consistencia entre ``users`` y ``students``.
+"""
+
 from ca_program.entities.fixed_values import UserRole
 from ca_program.entities.student import Student
-from ca_program.entities.user import User
-from database.connection import get_connection
+from ca_program.models.model_utils import (
+    build_user_entity,
+    require_identifier,
+    require_positive_int,
+    require_text,
+    validate_email,
+)
 from ca_program.models.user_model import UserModel
+from database.connection import get_connection
 
 
 class StudentModel:
+    """Acceso a datos de estudiantes y búsquedas administrativas."""
 
     @staticmethod
     def create_student(
@@ -14,28 +29,40 @@ class StudentModel:
         password: str,
         email: str,
         birth_date,
-        nationality: str
+        nationality: str,
     ) -> Student:
+        """Crea un estudiante junto con su usuario de rol STUDENT."""
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
+        clean_name = require_text(name, "Nombre")
+        clean_password = require_text(password, "Contraseña")
+        clean_email = validate_email(email)
+        clean_nationality = require_text(nationality, "Nacionalidad")
+
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
-            user_created = UserModel.create_user(name, password, UserRole.STUDENT, email, birth_date, nationality, cursor)
+            user_created = UserModel.create_user(
+                name=clean_name,
+                password=clean_password,
+                role=UserRole.STUDENT,
+                email=clean_email,
+                birth_date=birth_date,
+                nationality=clean_nationality,
+                cursor=cursor,
+            )
 
             cursor.execute(
                 """
                 INSERT INTO students (id_student, id_user)
                 VALUES (%s, %s);
                 """,
-                (id_student, user_created.id_user),
+                (clean_id_student, user_created.id_user),
             )
 
             connection.commit()
 
-            return Student(
-                id_student=id_student,
-                user=user_created
-            )
+            return Student(id_student=clean_id_student, user=user_created)
 
         except Exception:
             connection.rollback()
@@ -47,6 +74,7 @@ class StudentModel:
 
     @staticmethod
     def get_all_students() -> list[Student]:
+        """Retorna todos los estudiantes registrados, ordenados para la GUI."""
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -76,31 +104,13 @@ class StudentModel:
 
     @staticmethod
     def get_student_by_id(id_student: str) -> Student | None:
+        """Consulta un estudiante por su identificación académica."""
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
-            query = """
-                SELECT
-                    s.id_student,
-                    u.id_user,
-                    u.name,
-                    u.password,
-                    u.role,
-                    u.email,
-                    u.birth_date,
-                    u.nationality
-                FROM students s
-                INNER JOIN users u ON s.id_user = u.id_user
-                WHERE s.id_student = %s;
-            """
-            cursor.execute(query, (id_student,))
-            result = cursor.fetchone()
-
-            if result:
-                return StudentModel._map_to_entity(result)
-
-            return None
+            return StudentModel._get_student_by_id_with_cursor(cursor, clean_id_student)
 
         finally:
             cursor.close()
@@ -111,18 +121,17 @@ class StudentModel:
         """
         Obtiene el perfil de estudiante asociado a un usuario autenticado.
 
-        Este método permite transformar el User recibido desde el login en su
-        entidad Student correspondiente. Será usado por los servicios que
-        necesiten consultar información académica propia del estudiante, como
-        el registro de notas de la HU-23.
+        Permite transformar el ``User`` del login en la entidad ``Student`` que
+        necesitan los servicios académicos del estudiante.
         """
+        clean_id_user = require_positive_int(id_user, "ID de usuario")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             return StudentModel._get_student_by_user_id_with_cursor(
                 cursor=cursor,
-                id_user=id_user,
+                id_user=clean_id_user,
             )
 
         finally:
@@ -134,26 +143,20 @@ class StudentModel:
 
     @staticmethod
     def get_student_by_id_with_cursor(cursor, id_student: str) -> Student | None:
-        """
-        Obtiene un estudiante usando un cursor externo.
-
-        Este método permite que servicios con una transacción abierta puedan
-        validar la existencia del estudiante sin crear una nueva conexión.
-        """
+        """Consulta un estudiante usando una transacción externa."""
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         return StudentModel._get_student_by_id_with_cursor(
             cursor=cursor,
-            id_student=id_student,
+            id_student=clean_id_student,
         )
 
     @staticmethod
     def search_students(search_text: str | None = None) -> list[Student]:
         """
-        Busca estudiantes para procesos administrativos.
+        Busca estudiantes por identificación, nombre o correo.
 
-        Si no se proporciona texto, retorna todos los estudiantes ordenados por
-        nombre. La búsqueda considera identificación, nombre y correo, que son
-        los criterios necesarios para que administración seleccione un estudiante
-        y consulte su registro académico en la HU-17.
+        Si no hay texto de búsqueda, retorna la lista completa ordenada. Esto
+        evita duplicar SQL en vistas administrativas como consulta de notas.
         """
         connection = get_connection()
         cursor = connection.cursor()
@@ -183,47 +186,39 @@ class StudentModel:
         nationality: str,
     ) -> Student:
         """
-        Actualiza la información de un estudiante.
+        Actualiza identificación y datos personales del estudiante.
 
-        La información personal se actualiza en la tabla users porque el
-        estudiante está asociado a un usuario del sistema. La identificación
-        estudiantil se actualiza en la tabla students.
-
-        current_id_student:
-            Identificación actual del estudiante en la base de datos.
-
-        id_student:
-            Nueva identificación del estudiante. Puede ser igual a la actual.
-
-        password:
-            Si llega None o cadena vacía, se conserva la contraseña actual.
+        La contraseña se conserva cuando ``password`` llega como None o cadena
+        vacía. Toda la operación se ejecuta en una sola transacción.
         """
+        current_id = require_identifier(current_id_student, "Identificación actual")
+        new_id = require_identifier(id_student, "Nueva identificación")
+        clean_name = require_text(name, "Nombre")
+        clean_email = validate_email(email)
+        clean_nationality = require_text(nationality, "Nacionalidad")
+        clean_password = None if password is None else str(password).strip()
+
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             current_student = StudentModel._get_student_by_id_with_cursor(
                 cursor=cursor,
-                id_student=current_id_student,
+                id_student=current_id,
             )
 
             if current_student is None:
                 raise ValueError("El estudiante que intenta modificar no existe.")
 
-            if (
-                id_student != current_id_student
-                and StudentModel._student_id_exists_with_cursor(cursor, id_student)
-            ):
+            if new_id != current_id and StudentModel._student_id_exists_with_cursor(cursor, new_id):
                 raise ValueError("Ya existe un estudiante con esa identificación.")
 
             if StudentModel._email_exists_for_other_user_with_cursor(
                 cursor=cursor,
-                email=email,
+                email=clean_email,
                 id_user=current_student.user.id_user,
             ):
                 raise ValueError("Ya existe otro usuario registrado con ese correo electrónico.")
-
-            clean_password = None if password is None else str(password).strip()
 
             if clean_password:
                 cursor.execute(
@@ -238,11 +233,11 @@ class StudentModel:
                     WHERE id_user = %s;
                     """,
                     (
-                        name,
+                        clean_name,
                         clean_password,
-                        email,
+                        clean_email,
                         birth_date,
-                        nationality,
+                        clean_nationality,
                         current_student.user.id_user,
                     ),
                 )
@@ -258,10 +253,10 @@ class StudentModel:
                     WHERE id_user = %s;
                     """,
                     (
-                        name,
-                        email,
+                        clean_name,
+                        clean_email,
                         birth_date,
-                        nationality,
+                        clean_nationality,
                         current_student.user.id_user,
                     ),
                 )
@@ -272,12 +267,12 @@ class StudentModel:
                 SET id_student = %s
                 WHERE id_student = %s;
                 """,
-                (id_student, current_id_student),
+                (new_id, current_id),
             )
 
             updated_student = StudentModel._get_student_by_id_with_cursor(
                 cursor=cursor,
-                id_student=id_student,
+                id_student=new_id,
             )
 
             if updated_student is None:
@@ -294,25 +289,26 @@ class StudentModel:
             cursor.close()
             connection.close()
 
+    modify_student = update_student
+    edit_student = update_student
+    update = update_student
+
     @staticmethod
     def delete_student(id_student: str) -> Student:
         """
-        Elimina permanentemente un estudiante y todos sus datos asociados.
+        Elimina permanentemente un estudiante y sus registros dependientes.
 
-        La eliminación se realiza en una sola transacción para evitar registros
-        huérfanos. El orden respeta las dependencias del modelo relacional:
-        pagos, recibos, notas, matrículas, estudiante y usuario.
-
-        Retorna la entidad Student eliminada para que la capa de servicio pueda
-        construir una respuesta clara sin consultar nuevamente la base de datos.
+        Se respeta el orden relacional: pagos, recibos, notas, matrículas,
+        estudiante y usuario. Esto evita registros huérfanos.
         """
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
             student = StudentModel._get_student_by_id_with_cursor(
                 cursor=cursor,
-                id_student=id_student,
+                id_student=clean_id_student,
             )
 
             if student is None:
@@ -330,7 +326,7 @@ class StudentModel:
                     WHERE e.id_student = %s
                 );
                 """,
-                (id_student,),
+                (clean_id_student,),
             )
 
             cursor.execute(
@@ -342,7 +338,7 @@ class StudentModel:
                     WHERE id_student = %s
                 );
                 """,
-                (id_student,),
+                (clean_id_student,),
             )
 
             cursor.execute(
@@ -354,32 +350,12 @@ class StudentModel:
                     WHERE id_student = %s
                 );
                 """,
-                (id_student,),
+                (clean_id_student,),
             )
 
-            cursor.execute(
-                """
-                DELETE FROM enrollments
-                WHERE id_student = %s;
-                """,
-                (id_student,),
-            )
-
-            cursor.execute(
-                """
-                DELETE FROM students
-                WHERE id_student = %s;
-                """,
-                (id_student,),
-            )
-
-            cursor.execute(
-                """
-                DELETE FROM users
-                WHERE id_user = %s;
-                """,
-                (id_user,),
-            )
+            cursor.execute("DELETE FROM enrollments WHERE id_student = %s;", (clean_id_student,))
+            cursor.execute("DELETE FROM students WHERE id_student = %s;", (clean_id_student,))
+            cursor.execute("DELETE FROM users WHERE id_user = %s;", (id_user,))
 
             connection.commit()
             return student
@@ -397,6 +373,8 @@ class StudentModel:
 
     @staticmethod
     def email_exists(email: str) -> bool:
+        """Verifica si un correo ya está registrado en users."""
+        clean_email = validate_email(email)
         connection = get_connection()
         cursor = connection.cursor()
 
@@ -407,7 +385,7 @@ class StudentModel:
                 WHERE LOWER(email) = LOWER(%s)
                 LIMIT 1;
             """
-            cursor.execute(query, (email,))
+            cursor.execute(query, (clean_email,))
             return cursor.fetchone() is not None
 
         finally:
@@ -416,18 +394,21 @@ class StudentModel:
 
     @staticmethod
     def email_exists_for_other_student(email: str, id_student: str) -> bool:
+        """Verifica duplicidad de correo excluyendo al estudiante indicado."""
+        clean_email = validate_email(email)
+        clean_id_student = require_identifier(id_student, "Identificación del estudiante")
         connection = get_connection()
         cursor = connection.cursor()
 
         try:
-            student = StudentModel._get_student_by_id_with_cursor(cursor, id_student)
+            student = StudentModel._get_student_by_id_with_cursor(cursor, clean_id_student)
 
             if student is None:
-                return StudentModel.email_exists(email)
+                return StudentModel._email_exists_with_cursor(cursor, clean_email)
 
             return StudentModel._email_exists_for_other_user_with_cursor(
                 cursor=cursor,
-                email=email,
+                email=clean_email,
                 id_user=student.user.id_user,
             )
 
@@ -437,6 +418,7 @@ class StudentModel:
 
     @staticmethod
     def _get_student_by_id_with_cursor(cursor, id_student: str) -> Student | None:
+        """Consulta interna de estudiante por identificación usando cursor activo."""
         query = """
             SELECT
                 s.id_student,
@@ -461,6 +443,7 @@ class StudentModel:
 
     @staticmethod
     def _get_student_by_user_id_with_cursor(cursor, id_user: int) -> Student | None:
+        """Consulta interna de estudiante por id_user y rol STUDENT."""
         query = """
             SELECT
                 s.id_student,
@@ -487,6 +470,7 @@ class StudentModel:
 
     @staticmethod
     def _search_students_with_cursor(cursor, search_text: str | None = None) -> list[Student]:
+        """Ejecuta búsqueda flexible de estudiantes con un cursor activo."""
         clean_search = "" if search_text is None else str(search_text).strip()
 
         base_query = """
@@ -528,6 +512,7 @@ class StudentModel:
 
     @staticmethod
     def _student_id_exists_with_cursor(cursor, id_student: str) -> bool:
+        """Indica si existe un estudiante con la identificación indicada."""
         query = """
             SELECT 1
             FROM students
@@ -538,7 +523,20 @@ class StudentModel:
         return cursor.fetchone() is not None
 
     @staticmethod
+    def _email_exists_with_cursor(cursor, email: str) -> bool:
+        """Indica si un correo existe sin abrir una conexión adicional."""
+        query = """
+            SELECT 1
+            FROM users
+            WHERE LOWER(email) = LOWER(%s)
+            LIMIT 1;
+        """
+        cursor.execute(query, (email,))
+        return cursor.fetchone() is not None
+
+    @staticmethod
     def _email_exists_for_other_user_with_cursor(cursor, email: str, id_user: int) -> bool:
+        """Indica si el correo pertenece a otro usuario distinto al indicado."""
         query = """
             SELECT 1
             FROM users
@@ -551,6 +549,7 @@ class StudentModel:
 
     @staticmethod
     def _map_to_entity(row: tuple) -> Student:
+        """Mapea una fila JOIN students-users a entidad Student."""
         (
             id_student,
             id_user,
@@ -562,11 +561,11 @@ class StudentModel:
             nationality,
         ) = row
 
-        user = User(
+        user = build_user_entity(
             id_user=id_user,
             name=name,
             password=password,
-            role=UserRole(role),
+            role=role,
             email=email,
             birth_date=birth_date,
             nationality=nationality,

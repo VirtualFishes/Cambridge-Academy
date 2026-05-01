@@ -1,3 +1,7 @@
+"""Diálogo de confirmación de pago simulado.
+
+Captura el método de pago seleccionado y deja la persistencia en la capa de servicios."""
+
 from datetime import date, datetime
 
 from PySide6.QtCore import Qt
@@ -12,6 +16,12 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.entities.fixed_values import PaymentMethod
+from ca_program.views.student_view.student_view_utils import (
+    format_date,
+    format_price,
+    read_object_value,
+    receipt_status_label,
+)
 
 
 class PaymentDialog(QDialog):
@@ -157,59 +167,21 @@ class PaymentDialog(QDialog):
         return amount
 
     def _get_receipt_value(self, key: str):
-        if isinstance(self.receipt, dict):
-            return self.receipt.get(key)
-
-        if hasattr(self.receipt, key):
-            return getattr(self.receipt, key)
-
-        return None
+        """Lee un valor del recibo aceptando diccionario o entidad."""
+        return read_object_value(self.receipt, key, default=None)
 
     def _format_price(self, price) -> str:
-        try:
-            numeric_price = float(price)
-        except (TypeError, ValueError):
-            return "No registrado"
-
-        if numeric_price <= 0:
-            return "No registrado"
-
-        formatted = f"{numeric_price:,.0f}".replace(",", ".")
-        return f"$ {formatted}"
+        """Formatea el valor del recibo para el diálogo."""
+        return format_price(price)
 
     def _format_date(self, value) -> str:
-        if value in (None, ""):
-            return "No registrada"
-
-        if isinstance(value, datetime):
-            return value.strftime("%d/%m/%Y")
-
-        if isinstance(value, date):
-            return value.strftime("%d/%m/%Y")
-
-        text = str(value).strip()
-        if not text:
-            return "No registrada"
-
-        for date_format in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
-            try:
-                parsed = datetime.strptime(text[:19], date_format)
-                return parsed.strftime("%d/%m/%Y")
-            except ValueError:
-                continue
-
-        return text
+        """Formatea fechas del recibo."""
+        return format_date(value)
 
     def _format_status(self, status) -> str:
-        raw_status = getattr(status, "value", status)
-        normalized = str(raw_status or "").strip().lower()
-
-        labels = {
-            "pending": "Pendiente de pago",
-            "paid": "Pagado",
-            "expired": "Vencido",
-        }
-        return labels.get(normalized, "Pendiente de pago")
+        """Normaliza el estado del recibo para el usuario estudiante."""
+        label = receipt_status_label(status)
+        return "Pendiente de pago" if label == "Pendiente" else label
 
     def get_styles(self) -> str:
         return """

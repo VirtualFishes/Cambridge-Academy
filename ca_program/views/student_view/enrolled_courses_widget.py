@@ -1,3 +1,7 @@
+"""Vista de cursos inscritos del estudiante.
+
+Consulta las inscripciones confirmadas mediante EnrollmentService y presenta tarjetas de solo lectura."""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
@@ -14,6 +18,11 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.enrollment_service import EnrollmentService
+from ca_program.views.student_view.student_view_utils import (
+    calculate_card_columns,
+    clear_layout,
+    get_user_id,
+)
 
 try:
     from .course_card_widget import CourseCardWidget
@@ -179,11 +188,8 @@ class EnrolledCoursesWidget(QWidget):
         self._add_grid_spacers(columns)
 
     def _clear_grid(self):
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        """Limpia las tarjetas actuales antes de renderizar nuevamente."""
+        clear_layout(self.grid_layout)
 
     def _reset_grid_stretches(self):
         rows_to_reset = max(12, (len(self.courses) // 3) + 4)
@@ -211,14 +217,11 @@ class EnrolledCoursesWidget(QWidget):
             self.width(),
         )
 
-        if width >= 980:
-            return 3
-        if width >= 650:
-            return 2
-        return 1
+        return calculate_card_columns(width)
 
     def _get_user_id(self):
-        return getattr(self.user, "id_user", None)
+        """Obtiene el usuario autenticado sin acoplarse a una clase concreta."""
+        return get_user_id(self.user)
 
     def _handle_consult_course(self, course: dict):
         if callable(self.on_consult_course):

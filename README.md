@@ -1,6 +1,64 @@
-# Cambridge-Academy
+# Cambridge Academy — Sistema de Gestión Académica
 
-El proyecto consiste en el desarrollo de un sistema de gestión académica para Cambridge Academy, con el objetivo de digitalizar y automatizar los procesos de inscripción de estudiantes, administración de cursos y profesores, control de pagos, generación de reportes y gestión de accesos.
+**Versión:** 1.0.0
+**Estado:** Entrega funcional estable
+**Arquitectura:** MVC + Entities
+**Lenguaje:** Python
+**Interfaz gráfica:** PySide6
+**Base de datos:** PostgreSQL / Supabase
+
+---
+
+## Descripción del proyecto
+
+Cambridge Academy es un sistema de gestión académica desarrollado para una academia de idiomas ficticia.
+Su objetivo es digitalizar y automatizar procesos administrativos relacionados con estudiantes, profesores, cursos, matrículas, pagos, reportes y gestión de accesos según el rol del usuario.
+
+La versión `1.0.0` representa una entrega funcional completa, ejecutable y evaluable, construida a partir de los requerimientos definidos en las historias de usuario y organizada bajo una arquitectura **MVC + Entities**.
+
+---
+
+## Funcionalidades principales
+
+### Gestión de acceso
+
+- Inicio de sesión de usuarios.
+- Validación de credenciales.
+- Redirección según rol:
+  - Administrador.
+  - Profesor.
+  - Estudiante.
+
+### Módulo administrativo
+
+- Registro de estudiantes.
+- Consulta de estudiantes.
+- Actualización de datos de estudiantes.
+- Eliminación de estudiantes.
+- Registro de profesores.
+- Consulta de profesores.
+- Actualización de datos de profesores.
+- Eliminación de profesores.
+- Registro de cursos.
+- Consulta de cursos.
+- Actualización de cursos.
+- Eliminación de cursos.
+- Gestión de matrículas.
+- Gestión de pagos.
+- Consulta de reportes administrativos.
+
+### Módulo profesor
+
+- Consulta de cursos asignados.
+- Consulta de detalles de cursos.
+- Registro y gestión de notas de estudiantes.
+
+### Módulo estudiante
+
+- Consulta de información académica.
+- Consulta de cursos.
+- Consulta de calificaciones.
+- Consulta de estado académico.
 
 ---
 
@@ -58,47 +116,10 @@ DB_PASSWORD=contraseña_postgres
 El archivo `.env` contiene información sensible y no debe subirse al repositorio.
 
 ---
+## Novedades
 
-## Detalles de desarrollo
-
-Version 0.4.0 - Funciones del módulo profesor y control académico de notas.
-
-Esta versión integra el rol profesor y completa el flujo académico relacionado con la gestión de calificaciones. También permite que estudiantes y administradores consulten registros académicos desde sus respectivos perfiles.
-
-Funciones integradas:
-
-1. El usuario profesor puede consultar los cursos que tiene asignados.
-2. El usuario profesor puede consultar el detalle de sus cursos asignados.
-3. El usuario profesor puede registrar notas de estudiantes inscritos.
-4. El usuario profesor puede consultar el registro de notas de sus cursos.
-5. El usuario profesor puede modificar notas previamente registradas.
-6. El usuario estudiante puede consultar su registro de notas.
-7. El usuario administrador puede consultar el registro de notas por estudiante.
-8. El sistema valida el rango de notas académicas entre 0.0 y 5.0.
-9. El sistema calcula el promedio y el estado académico del estudiante.
-
-Historias de usuario implementadas:
-
-- HU-24: Consultar cursos asignados.
-- HU-25: Consultar datos de cursos asignados.
-- HU-26: Registrar notas de cada estudiante.
-- HU-27: Consultar registro de notas.
-- HU-28: Modificar notas de estudiantes.
-- HU-23: Consultar registro de notas.
-- HU-17: Consultar registro de notas por estudiante.
-
-# Versiones posteriores de desarrollo:
-
-- 0.1.0 : Registro y consulta de estudiantes, cursos y profesores.
-- 0.2.0 : Modificación, eliminación y búsqueda de estudiantes, cursos y profesores.
-- 0.3.0 : Módulo estudiante, inscripción, pagos y cambio de contraseña.
-- 0.3.1 : Resumen cursos
-- 0.3.2 : Detalles cursos
-- 0.3.3 : Registrar notas
-- 0.3.4 : Consultar notas
-- 0.3.5 : Modificar notas
-- 0.3.6 : Consultar notas como estudiante
-- 0.3.7 : Consultar notas como administrador
+- Re-escritura de código - Mucho más limpio y ordenado, cumple con lineamientos de código de calidad.
+- Nuevas validaciones - El programa se asegura que el id sea numérico y el nombre no contenga números en el registro de estudiantes y profesores.
 
 ---
 

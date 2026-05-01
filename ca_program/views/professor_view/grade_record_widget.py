@@ -1,3 +1,9 @@
+"""Vista de consulta y corrección de notas para profesores.
+
+El widget muestra la planilla académica de un curso asignado y delega toda
+modificación real en GradeService para conservar permisos y reglas de negocio.
+"""
+
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
@@ -18,6 +24,13 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.grade_service import GradeService
+from ca_program.views.professor_view.professor_view_utils import (
+    format_grade,
+    normalize_status_label,
+    read_float,
+    read_int,
+    read_mapping_value,
+)
 from ca_program.views.professor_view.grade_edit_dialog import GradeEditDialog
 
 
@@ -455,68 +468,33 @@ class GradeRecordWidget(QWidget):
         return self._read_course("code_course", "course_code", "code", default="").strip()
 
     def _read_course(self, *keys: str, default: str = "") -> str:
-        if not isinstance(self.course, dict):
-            return default
-
-        for key in keys:
-            value = self.course.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-        return default
+        return read_mapping_value(self.course, *keys, default=default)
 
     @staticmethod
     def _read_value(record: dict, key: str, default: str = "") -> str:
-        if not isinstance(record, dict):
-            return default
-
-        value = record.get(key)
-        if value not in (None, ""):
-            return str(value).strip()
-        return default
+        return read_mapping_value(record, key, default=default)
 
     @staticmethod
     def _read_summary_int(summary: dict, *keys: str) -> int:
-        if not isinstance(summary, dict):
-            return 0
-
         for key in keys:
-            value = summary.get(key)
-            if value not in (None, ""):
-                try:
-                    return int(value)
-                except (TypeError, ValueError):
-                    return 0
+            if isinstance(summary, dict) and summary.get(key) not in (None, ""):
+                return read_int(summary.get(key), 0)
         return 0
 
     @staticmethod
     def _read_summary_float(summary: dict, *keys: str) -> float:
-        if not isinstance(summary, dict):
-            return 0.0
-
         for key in keys:
-            value = summary.get(key)
-            if value not in (None, ""):
-                try:
-                    return float(value)
-                except (TypeError, ValueError):
-                    return 0.0
+            if isinstance(summary, dict) and summary.get(key) not in (None, ""):
+                return read_float(summary.get(key), 0.0)
         return 0.0
 
     @staticmethod
     def _format_grade(value) -> str:
-        try:
-            return f"{float(value):.2f}"
-        except (TypeError, ValueError):
-            return "0.00"
+        return format_grade(value, empty="0.00")
 
     @staticmethod
     def _format_status(status) -> str:
-        clean_status = str(status or "").strip().lower()
-        if clean_status in ("passed", "pass", "aprobado", "academicstatus.passed"):
-            return "Aprobado"
-        if clean_status in ("failed", "fail", "reprobado", "academicstatus.failed"):
-            return "Reprobado"
-        return str(status or "Sin estado").strip().capitalize()
+        return normalize_status_label(status, default="Sin estado")
 
     def _set_text_item(self, row: int, column: int, text, align=Qt.AlignVCenter | Qt.AlignLeft):
         item = QTableWidgetItem(str(text if text not in (None, "") else "No registrado"))

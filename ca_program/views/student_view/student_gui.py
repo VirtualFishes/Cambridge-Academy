@@ -1,3 +1,7 @@
+"""Panel principal para usuarios estudiantes.
+
+Coordina navegación entre vistas del estudiante y delega operaciones de inscripción, pago y seguridad a servicios."""
+
 import importlib
 
 from PySide6.QtCore import Qt
@@ -18,6 +22,12 @@ from PySide6.QtWidgets import (
 from ca_program.services.enrollment_service import EnrollmentService
 from ca_program.services.account_service import AccountService
 from ca_program.views.change_password_dialog import ChangePasswordDialog
+from ca_program.views.student_view.student_view_utils import (
+    get_course_code,
+    get_course_name,
+    get_user_id,
+    normalize_enrollment_status,
+)
 
 try:
     from .available_courses_widget import AvailableCoursesWidget
@@ -511,43 +521,23 @@ class StudentGUI(QMainWindow):
         return updated_course
 
     def _get_user_id(self):
-        return getattr(self.user, "id_user", None)
+        """Obtiene el id_user sin acoplar la GUI a una implementación concreta."""
+        return get_user_id(self.user)
 
     @staticmethod
     def _get_course_code(course: dict):
-        if not isinstance(course, dict):
-            return None
-
-        return (
-            course.get("code_course")
-            or course.get("course_code")
-            or course.get("code")
-            or course.get("id")
-        )
+        """Obtiene el código de curso desde las claves aceptadas por la GUI."""
+        return get_course_code(course)
 
     @staticmethod
     def _get_course_name(course: dict) -> str:
-        if not isinstance(course, dict):
-            return "el curso seleccionado"
-
-        name = str(course.get("name", "")).strip()
-        return name or "el curso seleccionado"
+        """Obtiene el nombre visible del curso para mensajes de confirmación."""
+        return get_course_name(course)
 
     @staticmethod
     def _normalize_status(status) -> str:
-        status_text = str(status or "NO_INSCRITO").strip().upper()
-        aliases = {
-            "NOT_ENROLLED": "NO_INSCRITO",
-            "NO INSCRITO": "NO_INSCRITO",
-            "DISPONIBLE": "NO_INSCRITO",
-            "PENDING_PAYMENT": "PENDIENTE_DE_PAGO",
-            "PENDIENTE": "PENDIENTE_DE_PAGO",
-            "PENDIENTE DE PAGO": "PENDIENTE_DE_PAGO",
-            "ENROLLED": "INSCRITO",
-            "CONFIRMADO": "INSCRITO",
-            "EXPIRED": "VENCIDO",
-        }
-        return aliases.get(status_text, status_text)
+        """Normaliza estados de inscripción devueltos por servicios."""
+        return normalize_enrollment_status(status)
 
     def open_change_password_dialog(self):
         """Abre el diálogo de cambio de contraseña para el estudiante autenticado."""

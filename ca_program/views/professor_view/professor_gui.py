@@ -1,3 +1,9 @@
+"""Panel principal del usuario profesor.
+
+Coordina navegación entre vistas, cambio de contraseña y cierre de sesión sin
+consultar directamente la base de datos.
+"""
+
 import importlib
 
 from PySide6.QtCore import Qt, QTimer
@@ -23,6 +29,13 @@ from ca_program.views.change_password_dialog import ChangePasswordDialog
 from ca_program.views.professor_view.professor_course_detail_widget import ProfessorCourseDetailWidget
 from ca_program.views.professor_view.grade_registration_widget import GradeRegistrationWidget
 from ca_program.views.professor_view.grade_record_widget import GradeRecordWidget
+from ca_program.views.professor_view.professor_view_utils import (
+    clear_layout,
+    format_date,
+    read_float,
+    read_int,
+    read_mapping_value,
+)
 
 
 class ProfessorGUI(QMainWindow):
@@ -253,15 +266,7 @@ class ProfessorGUI(QMainWindow):
 
     @staticmethod
     def _extract_course_code(course: dict | None) -> str:
-        if not isinstance(course, dict):
-            return ""
-
-        for key in ("code_course", "course_code", "code"):
-            value = course.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
-
-        return ""
+        return read_mapping_value(course, "code_course", "course_code", "code", default="")
 
     def open_change_password_dialog(self):
         """Abre el diálogo de cambio de contraseña para el profesor autenticado."""
@@ -693,11 +698,7 @@ class AssignedCoursesWidget(QWidget):
             self.on_view_course_detail(course)
 
     def _clear_grid(self):
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
+        clear_layout(self.grid_layout)
 
     def _reset_grid_stretches(self):
         rows_to_reset = max(12, (len(self.courses) // 3) + 4)
@@ -832,33 +833,19 @@ class ProfessorCourseCardWidget(QFrame):
             self.on_view_detail(self.course)
 
     def _get_course_name(self) -> str:
-        name = str(self.course.get("name", "")).strip()
-        return name or "Curso sin nombre"
+        return read_mapping_value(self.course, "name", default="Curso sin nombre")
 
     def _get_value(self, key: str, default: str) -> str:
-        value = self.course.get(key)
-        value = str(value).strip() if value not in (None, "") else ""
-        return value or default
+        return read_mapping_value(self.course, key, default=default)
 
     def _get_students_count(self):
         value = self.course.get("enrolled_students", self.course.get("students", 0))
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return 0
+        return read_int(value, 0)
 
     def _get_hours(self):
-        value = self.course.get("intensity_hours", 0)
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return 0
-
-        if number.is_integer():
-            return int(number)
-        return number
+        number = read_float(self.course.get("intensity_hours", 0), 0.0)
+        return int(number) if number.is_integer() else number
 
     @staticmethod
     def _format_date(value) -> str:
-        text = str(value or "").strip()
-        return text or "No registrada"
+        return format_date(value, default="No registrada")

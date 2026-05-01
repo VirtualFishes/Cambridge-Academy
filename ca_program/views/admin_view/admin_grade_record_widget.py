@@ -1,3 +1,9 @@
+"""Vista administrativa de consulta del registro académico.
+
+Permite buscar estudiantes y visualizar sus notas confirmadas. Es una pantalla
+de solo lectura: no registra, modifica ni elimina calificaciones.
+"""
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from ca_program.services.grade_service import GradeService
+from ca_program.views.admin_view.admin_view_utils import make_table_item, safe_text
 
 
 class AdminGradeRecordWidget(QWidget):
@@ -392,8 +399,7 @@ class AdminGradeRecordWidget(QWidget):
         self.handle_student_selection()
 
     def _set_student_item(self, row: int, column: int, value, align=Qt.AlignLeft | Qt.AlignVCenter):
-        item = QTableWidgetItem(str(value if value not in (None, "") else "—"))
-        item.setTextAlignment(align)
+        item = make_table_item(value, align)
         if column == self.STUDENT_COL_ID:
             item.setData(Qt.UserRole, str(value or ""))
         self.students_table.setItem(row, column, item)
@@ -457,9 +463,9 @@ class AdminGradeRecordWidget(QWidget):
 
     def update_selected_student_header(self):
         student = self.selected_student or {}
-        name = student.get("name") or "Estudiante seleccionado"
-        id_student = student.get("id_student") or "—"
-        email = student.get("email") or "Sin correo registrado"
+        name = safe_text(student.get("name"), "Estudiante seleccionado")
+        id_student = safe_text(student.get("id_student"))
+        email = safe_text(student.get("email"), "Sin correo registrado")
 
         self.selected_name_label.setText(name)
         self.selected_detail_label.setText(f"Documento: {id_student}  |  Correo: {email}")
@@ -510,9 +516,7 @@ class AdminGradeRecordWidget(QWidget):
         QTimer.singleShot(0, lambda: self.records_table.scrollToTop())
 
     def _set_grade_item(self, row: int, column: int, value, align=Qt.AlignLeft | Qt.AlignVCenter):
-        item = QTableWidgetItem(str(value if value not in (None, "") else "—"))
-        item.setTextAlignment(align)
-        self.records_table.setItem(row, column, item)
+        self.records_table.setItem(row, column, make_table_item(value, align))
 
     def _set_status_badge(self, row: int, record: dict):
         status_value = str(record.get("status", "pending") or "pending").strip().lower()
